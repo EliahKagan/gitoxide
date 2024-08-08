@@ -160,10 +160,15 @@ jobs:
           toolchain: ${{ matrix.rust }}
           targets: ${{ matrix.target }}
 
+      - name: Install extra tools
+        run: |
+          cargo install cargo-quickinstall
+          cargo quickinstall cargo-audit cargo-auditable
+
       - name: Use Cross
         if: matrix.os == 'ubuntu-latest'
         run: |
-          cargo install cross
+          cargo quickinstall cross
           echo 'CARGO=cross' >> "$GITHUB_ENV"
 
       - name: Show command used for Cargo
@@ -174,7 +179,7 @@ jobs:
 
       - name: Build release binary (with extra optimizations)
         run: |
-          "$CARGO" build --verbose --profile="$PROFILE" "$TARGET_FLAGS" --no-default-features --features="$FEATURE"
+          "$CARGO" auditable build --verbose --profile="$PROFILE" "$TARGET_FLAGS" --no-default-features --features="$FEATURE"
 
       - name: Determine archive basename
         run: echo "ARCHIVE=gitoxide-$FEATURE-$VERSION-$TARGET" >> "$GITHUB_ENV"
@@ -333,7 +338,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish the release
+      - name: Publish the release  # FIXME: Reenable this.
+        if: false
         run: gh release --repo="$REPOSITORY" edit "$VERSION" --draft=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

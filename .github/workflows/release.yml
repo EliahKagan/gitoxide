@@ -160,10 +160,11 @@ jobs:
           toolchain: ${{ matrix.rust }}
           targets: ${{ matrix.target }}
 
-      - name: Install extra tools
-        run: |
-          cargo install cargo-quickinstall
-          cargo quickinstall cargo-audit cargo-auditable
+      - name: Install cargo-quickinstall
+        run: cargo install cargo-quickinstall
+
+      - name: Install auditability tools
+        run: cargo quickinstall cargo-audit cargo-auditable
 
       - name: Use Cross
         if: matrix.os == 'ubuntu-latest'

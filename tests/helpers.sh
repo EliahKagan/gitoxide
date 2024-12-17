@@ -61,11 +61,11 @@ function small-repo-in-sandbox() {
 
 function launch-git-daemon() {
     local port=9418
-    if nc -4z localhost "$port"; then
+    if nc -z 127.0.0.1 "$port"; then
       echo "Port $port (IPv4) should not have been open before this test's run of the git daemon!" >&2
       return 1
     fi
-    if nc -6z localhost "$port"; then
+    if nc -z ::1 "$port"; then
       echo "Port $port (IPv6) should not have been open before this test's run of the git daemon!" >&2
       return 1
     fi
@@ -74,9 +74,10 @@ function launch-git-daemon() {
       echo 'An instance of git-daemon seems to be running already!' >&2
       return 1
     fi
-    git -c uploadpack.allowRefInWant=true daemon --verbose --base-path=. --export-all --user-path &>/dev/null &
+    git -c uploadpack.allowRefInWant=true \
+      daemon --verbose --base-path=. --export-all --user-path --listen=::1 &>/dev/null &
     daemon_pid=$!
-    while ! nc -z localhost "$port"; do
+    while ! nc -z ::1 "$port"; do
       sleep 0.1
     done
     trap 'kill $daemon_pid' EXIT

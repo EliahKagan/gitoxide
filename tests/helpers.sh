@@ -61,10 +61,16 @@ function small-repo-in-sandbox() {
 
 function launch-git-daemon() {
     local port=9418
-    if true; then
-      echo "We didn't check $port -- this just tests if we can bail out." >&2
+    if nc -z localhost "$port"; then
+      echo "Port $port should not have been open before this test's run of the git daemon!" >&2
       return 1
     fi
+    (
+      set +e -x
+      echo 'GIT_CONFIG_* vars START'
+      printenv | grep ^GIT_CONFIG_
+      echo 'GIT_CONFIG_* vars END'
+    ) >&2
     git -c uploadpack.allowrefinwant daemon --verbose --base-path=. --export-all --user-path &>/dev/null &
     daemon_pid=$!
     while ! nc -z localhost "$port"; do

@@ -71,7 +71,7 @@ function launch-git-daemon() {
       printenv | grep ^GIT_CONFIG_
       echo 'GIT_CONFIG_* vars END'
     ) >&2
-    git -c uploadpack.allowrefinwant daemon --verbose --base-path=. --export-all --user-path &>/dev/null &
+    git -c uploadpack.allowRefInWant=true daemon --verbose --base-path=. --export-all --user-path &>/dev/null &
     daemon_pid=$!
     while ! nc -z localhost "$port"; do
       sleep 0.1

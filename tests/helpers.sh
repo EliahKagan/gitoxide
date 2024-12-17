@@ -61,8 +61,12 @@ function small-repo-in-sandbox() {
 
 function launch-git-daemon() {
     local port=9418
-    if nc -z localhost "$port"; then
-      echo "Port $port should not have been open before this test's run of the git daemon!" >&2
+    if nc -4z localhost "$port"; then
+      echo "Port $port (IPv4) should not have been open before this test's run of the git daemon!" >&2
+      return 1
+    fi
+    if nc -6z localhost "$port"; then
+      echo "Port $port (IPv6) should not have been open before this test's run of the git daemon!" >&2
       return 1
     fi
     if pgrep git-daemon; then

@@ -60,18 +60,15 @@ function small-repo-in-sandbox() {
 }
 
 function launch-git-daemon() {
-    local port=9418
+    local port=9418 exec_path
     if nc -z localhost "$port"; then
       echo "Port $port should not have been open before this test's run of the git daemon!" >&2
       return 1
     fi
-    (
-      set +e -x
-      echo 'GIT_CONFIG_* vars START'
-      printenv | grep ^GIT_CONFIG_
-      echo 'GIT_CONFIG_* vars END'
-    ) >&2
-    git -c uploadpack.allowRefInWant=true daemon --verbose --base-path=. --export-all --user-path &>/dev/null &
+    exec_path="$(git --exec-path)"
+    # TODO: Maybe dynamically set the `GIT_CONFIG_*` vars, to accommodate preexisting ones.
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=uploadpack.allowRefInWant GIT_CONFIG_VALUE_0=true \
+      "$exec_path/git-daemon" --verbose --base-path=. --export-all --user-path &>/dev/null &
     daemon_pid=$!
     while ! nc -z localhost "$port"; do
       sleep 0.1

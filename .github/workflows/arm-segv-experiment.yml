@@ -1,0 +1,32 @@
+name: AArch64 SIGSEGV experiment
+
+on: push
+
+jobs:
+  test-fast:
+    strategy:
+      matrix:
+        os-ver: [ '22.04', '24.04' ]
+        toolchain: [ '1.81', '1.82', '1.83', '1.84' ]
+        number: [ 0 ]  # [ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' ]
+
+      fail-fast: false
+
+    runs-on: ubuntu-${{ matrix.os-ver }}-arm
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Test (nextest)
+        env:
+          GIX_TEST_CREATE_ARCHIVES_EVEN_ON_CI: '1'
+        run: cargo nextest run --workspace --no-fail-fast
+      - name: Doctest
+        run: cargo test --workspace --doc --no-fail-fast
+      - name: Check that tracked archives are up to date
+        run: git diff --exit-code  # If this fails, the fix is usually to commit a regenerated archive.

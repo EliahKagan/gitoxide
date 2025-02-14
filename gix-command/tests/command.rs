@@ -567,4 +567,96 @@ mod spawn {
             Ok(())
         }
     }
+
+    mod script {
+        use std::ffi::{OsStr, OsString};
+        use std::path::{Path, PathBuf};
+
+        use gix_testtools::bstr::ByteSlice;
+
+        fn script_path(filename: impl AsRef<Path>) -> crate::Result<PathBuf> {
+            let mut path = gix_testtools::scripted_fixture_read_only("scripts.sh")?;
+            path.push(filename);
+            Ok(path)
+        }
+
+        fn script_stdout_lines(
+            path: impl Into<OsString>,
+            args: Option<&[&OsStr]>, // Let us test calling vs. not calling `args` (rather than calling with `[]`).
+            indirect: bool,
+        ) -> crate::Result<Vec<OsString>> {
+            let mut prep = gix_command::prepare(path);
+            if indirect {
+                prep.use_shell = true;
+                prep.allow_manual_arg_splitting = false;
+                prep.quote_command = true;
+            }
+            if let Some(extra_args) = args {
+                prep = prep.args(extra_args);
+            }
+            let out = prep.spawn()?.wait_with_output()?;
+            assert!(out.status.success());
+            assert!(out.stderr.is_empty());
+            let lines = out
+                .stdout
+                .lines()
+                .map(|line| line.to_os_str().expect("valid UTF-8"))
+                .map(ToOwned::to_owned)
+                .collect();
+            Ok(lines)
+        }
+
+        fn do_trivial(indirect: bool) -> crate::Result {
+            let path = script_path("trivial")?;
+            let lines = script_stdout_lines(path, None, indirect)?;
+            assert_eq!(lines, ["Hello, world!"]);
+            Ok(())
+        }
+
+        #[test]
+        fn trivial_direct() -> crate::Result {
+            do_trivial(false)
+        }
+
+        #[test]
+        fn trivial_indirect() -> crate::Result {
+            do_trivial(true)
+        }
+
+        fn do_name_no_args(indirect: bool) -> crate::Result {
+            let path = script_path("name-and-args")?;
+            let lines = script_stdout_lines(&path, None, indirect)?;
+            assert_eq!(lines, [path]);
+            Ok(())
+        }
+
+        #[test]
+        fn name_no_args_direct() -> crate::Result {
+            do_name_no_args(false)
+        }
+
+        #[test]
+        fn name_no_args_indirect() -> crate::Result {
+            do_name_no_args(true)
+        }
+
+        fn do_name_with_args(indirect: bool) -> crate::Result {
+            let path = script_path("name-and-args")?;
+            let args = ["foo", "bar baz", "quux"].map(OsStr::new);
+            let expected: Vec<_> = std::iter::once(path.as_os_str()).chain(args).collect();
+            let lines = script_stdout_lines(&path, Some(&args), indirect)?;
+            assert_eq!(lines, expected);
+            Ok(())
+        }
+
+        #[test]
+        fn name_with_args_direct() -> crate::Result {
+            do_name_with_args(false)
+        }
+
+        #[test]
+        fn name_with_args_indirect() -> crate::Result {
+            do_name_with_args(true)
+        }
+    }
 }

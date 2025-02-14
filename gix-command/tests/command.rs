@@ -1,6 +1,11 @@
 use gix_testtools::Result;
 use std::path::Path;
 
+#[cfg(windows)]
+const SH: &str = "sh";
+#[cfg(not(windows))]
+const SH: &str = "/bin/sh";
+
 #[test]
 fn extract_interpreter() -> gix_testtools::Result {
     let root = gix_testtools::scripted_fixture_read_only("win_path_lookup.sh")?;
@@ -222,10 +227,7 @@ mod context {
 }
 
 mod prepare {
-    #[cfg(windows)]
-    const SH: &str = "sh";
-    #[cfg(not(windows))]
-    const SH: &str = "/bin/sh";
+    use crate::SH;
 
     fn quoted(input: &[&str]) -> String {
         input.iter().map(|s| format!("\"{s}\"")).collect::<Vec<_>>().join(" ")
@@ -510,6 +512,7 @@ mod spawn {
     }
 
     mod with_shell {
+        use crate::SH;
         use gix_testtools::bstr::ByteSlice;
 
         #[test]
@@ -554,6 +557,31 @@ mod spawn {
                 .wait_with_output()?;
             assert!(out.status.success());
             assert_eq!(out.stdout.as_bstr(), "arg");
+            Ok(())
+        }
+
+        #[test]
+        fn command_name() -> crate::Result {
+            let prep = gix_command::prepare(r#"printf '%s' "$0""#)
+                .command_may_be_shell_script_disallow_manual_argument_splitting();
+            assert!(prep.use_shell);
+            assert!(!prep.allow_manual_arg_splitting);
+            let out = prep.spawn()?.wait_with_output()?;
+            assert!(out.status.success());
+            assert_eq!(out.stdout.as_bstr(), SH);
+            Ok(())
+        }
+
+        #[test]
+        fn command_name_with_args() -> crate::Result {
+            let prep = gix_command::prepare(r#"printf '%s\n' "$0""#) // Rely on ` "$@"` being appended.
+                .command_may_be_shell_script_disallow_manual_argument_splitting()
+                .args(["foo", "bar baz", "quux"]);
+            assert!(prep.use_shell);
+            assert!(!prep.allow_manual_arg_splitting);
+            let out = prep.spawn()?.wait_with_output()?;
+            assert!(out.status.success());
+            assert_eq!(out.stdout.as_bstr(), format!("{SH}\nfoo\nbar baz\nquux\n"));
             Ok(())
         }
     }

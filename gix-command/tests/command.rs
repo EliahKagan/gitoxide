@@ -569,22 +569,40 @@ mod spawn {
     }
 
     mod script {
-        use std::ffi::{OsStr, OsString};
-        use std::path::{Path, PathBuf};
-
         use gix_testtools::bstr::ByteSlice;
+        use std::path::Path;
 
-        fn script_path(filename: impl AsRef<Path>) -> crate::Result<PathBuf> {
-            let mut path = gix_testtools::scripted_fixture_read_only("scripts.sh")?;
-            path.push(filename);
+        /// Get the path to a script created by the `scripts.sh` fixture.
+        ///
+        /// The path uses `/` as a separator. On Windows, it achieves this by replacing each
+        /// occurrence of `\` with `/`. This does not always preserve usability, and sometimes
+        /// does not even preserve meaning. In particular, `\\?\` paths would often become less
+        /// usable (though `std` recognizes `//?/`) and occasionally incorrect (if a component
+        /// contained a literal `/` on a strange filesystem), and NT object manager paths such as
+        /// those that begin with `\??\` (which `std` recognizes, when they refer to entries on a
+        /// filesystem) are always broken. But they might be good enough to use in the test suite.
+        ///
+        /// This fails if the path is not valid Unicode (as `String` is a bit easier to use here).
+        fn script_path(filename: impl AsRef<Path>) -> crate::Result<String> {
+            let path = gix_testtools::scripted_fixture_read_only("scripts.sh")?
+                .join(filename)
+                .to_str()
+                .map(|p| {
+                    if cfg!(windows) {
+                        p.replace('\\', "/")
+                    } else {
+                        p.to_owned()
+                    }
+                })
+                .expect("valid UTF-8");
             Ok(path)
         }
 
         fn script_stdout_lines(
-            path: impl Into<OsString>,
-            args: Option<&[&OsStr]>, // Let us test calling vs. not calling `args` (rather than calling with `[]`).
+            path: &str,
+            args: Option<&[&str]>, // Let us test calling vs. not calling `args` (rather than calling with `[]`).
             indirect: bool,
-        ) -> crate::Result<Vec<OsString>> {
+        ) -> crate::Result<Vec<String>> {
             let mut prep = gix_command::prepare(path);
             if indirect {
                 prep.use_shell = true;
@@ -600,7 +618,7 @@ mod spawn {
             let lines = out
                 .stdout
                 .lines()
-                .map(|line| line.to_os_str().expect("valid UTF-8"))
+                .map(|line| line.to_str().expect("valid UTF-8"))
                 .map(ToOwned::to_owned)
                 .collect();
             Ok(lines)
@@ -608,7 +626,7 @@ mod spawn {
 
         fn do_trivial(indirect: bool) -> crate::Result {
             let path = script_path("trivial")?;
-            let lines = script_stdout_lines(path, None, indirect)?;
+            let lines = script_stdout_lines(&path, None, indirect)?;
             assert_eq!(lines, ["Hello, world!"]);
             Ok(())
         }
@@ -642,8 +660,8 @@ mod spawn {
 
         fn do_name_with_args(indirect: bool) -> crate::Result {
             let path = script_path("name-and-args")?;
-            let args = ["foo", "bar baz", "quux"].map(OsStr::new);
-            let expected: Vec<_> = std::iter::once(path.as_os_str()).chain(args).collect();
+            let args = ["foo", "bar baz", "quux"];
+            let expected: Vec<_> = std::iter::once(path.as_str()).chain(args).collect();
             let lines = script_stdout_lines(&path, Some(&args), indirect)?;
             assert_eq!(lines, expected);
             Ok(())

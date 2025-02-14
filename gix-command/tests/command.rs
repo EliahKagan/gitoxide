@@ -1,6 +1,13 @@
 use std::path::Path;
 
 use gix_testtools::Result;
+use once_cell::sync::Lazy;
+
+static SH: Lazy<&'static str> = Lazy::new(|| {
+    gix_path::env::shell()
+        .to_str()
+        .expect("`prepare` tests must be run where 'sh' path is valid Unicode")
+});
 
 #[test]
 fn extract_interpreter() -> gix_testtools::Result {
@@ -224,14 +231,6 @@ mod context {
 }
 
 mod prepare {
-    use once_cell::sync::Lazy;
-
-    static SH: Lazy<&'static str> = Lazy::new(|| {
-        gix_path::env::shell()
-            .to_str()
-            .expect("`prepare` tests must be run where 'sh' path is valid Unicode")
-    });
-
     fn quoted(input: &[&str]) -> String {
         input.iter().map(|s| format!("\"{s}\"")).collect::<Vec<_>>().join(" ")
     }
@@ -280,7 +279,7 @@ mod prepare {
             if cfg!(windows) {
                 quoted(&["ls", "first", "second", "third"])
             } else {
-                quoted(&[*SH, "-c", "ls first second third", "--"])
+                quoted(&[*crate::SH, "-c", "ls first second third", "--"])
             },
             "with shell, this works as it performs word splitting"
         );
@@ -316,7 +315,7 @@ mod prepare {
             if cfg!(windows) {
                 quoted(&["ls", "--foo", "a b", "additional"])
             } else {
-                let sh = *SH;
+                let sh = *crate::SH;
                 format!(r#""{sh}" "-c" "ls --foo \"a b\" \"$@\"" "--" "additional""#)
             },
             "with shell, this works as it performs word splitting"
@@ -340,7 +339,10 @@ mod prepare {
         let cmd = std::process::Command::from(
             gix_command::prepare(r#"ls --foo="a b""#).command_may_be_shell_script_disallow_manual_argument_splitting(),
         );
-        assert_eq!(format!("{cmd:?}"), quoted(&[*SH, "-c", r#"ls --foo=\"a b\""#, "--"]));
+        assert_eq!(
+            format!("{cmd:?}"),
+            quoted(&[*crate::SH, "-c", r#"ls --foo=\"a b\""#, "--"])
+        );
     }
 
     #[test]
@@ -353,7 +355,7 @@ mod prepare {
         );
         assert_eq!(
             format!("{cmd:?}"),
-            quoted(&[*SH, "-c", r#"ls \"$@\""#, "--", "--foo=a b"])
+            quoted(&[*crate::SH, "-c", r#"ls \"$@\""#, "--", "--foo=a b"])
         );
     }
 
@@ -368,7 +370,7 @@ mod prepare {
         );
         assert_eq!(
             format!("{cmd:?}"),
-            quoted(&[*SH, "-c", r#"\'ls\' \"$@\""#, "--", "--foo=a b"]),
+            quoted(&[*crate::SH, "-c", r#"\'ls\' \"$@\""#, "--", "--foo=a b"]),
             "looks strange thanks to debug printing, but is the right amount of quotes actually"
         );
     }
@@ -385,7 +387,7 @@ mod prepare {
         assert_eq!(
             format!("{cmd:?}"),
             quoted(&[
-                *SH,
+                *crate::SH,
                 "-c",
                 r#"\'C:\\Users\\O\'\\\'\'Shaughnessy\\with space.exe\' \"$@\""#,
                 "--",
@@ -400,7 +402,7 @@ mod prepare {
         let cmd = std::process::Command::from(
             gix_command::prepare("ls --foo=~/path").command_may_be_shell_script_allow_manual_argument_splitting(),
         );
-        let sh = *SH;
+        let sh = *crate::SH;
         assert_eq!(
             format!("{cmd:?}"),
             format!(r#""{sh}" "-c" "ls --foo=~/path" "--""#),
@@ -412,7 +414,7 @@ mod prepare {
     fn tilde_path_and_multiple_arguments_as_part_of_command_with_shell() {
         let cmd =
             std::process::Command::from(gix_command::prepare(r#"~/bin/exe --foo "a b""#).command_may_be_shell_script());
-        let sh = *SH;
+        let sh = *crate::SH;
         assert_eq!(
             format!("{cmd:?}"),
             format!(r#""{sh}" "-c" "~/bin/exe --foo \"a b\"" "--""#),
@@ -427,7 +429,7 @@ mod prepare {
                 .command_may_be_shell_script()
                 .arg("store"),
         );
-        let sh = *SH;
+        let sh = *crate::SH;
         assert_eq!(
             format!("{cmd:?}"),
             format!(r#""{sh}" "-c" "echo \"$@\" >&2" "--" "store""#),
@@ -444,7 +446,7 @@ mod prepare {
                 .with_quoted_command()
                 .arg("store"),
         );
-        let sh = *SH;
+        let sh = *crate::SH;
         assert_eq!(
             format!("{cmd:?}"),
             format!(r#""{sh}" "-c" "echo \"$@\" >&2" "--" "store""#)
@@ -564,6 +566,32 @@ mod spawn {
                 .wait_with_output()?;
             assert!(out.status.success());
             assert_eq!(out.stdout.as_bstr(), "arg");
+            Ok(())
+        }
+
+        #[test]
+        fn command_name() -> crate::Result {
+            let prep = gix_command::prepare(r#"printf '%s' "$0""#)
+                .command_may_be_shell_script_disallow_manual_argument_splitting();
+            assert!(prep.use_shell);
+            assert!(!prep.allow_manual_arg_splitting);
+            let out = prep.spawn()?.wait_with_output()?;
+            assert!(out.status.success());
+            assert_eq!(out.stdout.as_bstr(), *crate::SH);
+            Ok(())
+        }
+
+        #[test]
+        fn command_name_with_args() -> crate::Result {
+            let prep = gix_command::prepare(r#"printf '%s\n' "$0""#) // Rely on ` "$@"` being appended.
+                .command_may_be_shell_script_disallow_manual_argument_splitting()
+                .args(["foo", "bar baz", "quux"]);
+            assert!(prep.use_shell);
+            assert!(!prep.allow_manual_arg_splitting);
+            let out = prep.spawn()?.wait_with_output()?;
+            assert!(out.status.success());
+            let sh = *crate::SH;
+            assert_eq!(out.stdout.as_bstr(), format!("{sh}\nfoo\nbar baz\nquux\n"));
             Ok(())
         }
     }

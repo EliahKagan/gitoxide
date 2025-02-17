@@ -569,40 +569,29 @@ mod spawn {
     }
 
     mod script {
-        use gix_testtools::bstr::ByteSlice;
+        use std::ffi::{OsStr, OsString};
         use std::path::Path;
 
-        /// Get the path to a script created by the `scripts.sh` fixture.
-        ///
-        /// The path uses `/` as a separator. On Windows, it achieves this by replacing each
-        /// occurrence of `\` with `/`. This does not always preserve usability, and sometimes
-        /// does not even preserve meaning. In particular, `\\?\` paths would often become less
-        /// usable (though `std` recognizes `//?/`) and occasionally incorrect (if a component
-        /// contained a literal `/` on a strange filesystem), and NT object manager paths such as
-        /// those that begin with `\??\` (which `std` recognizes, when they refer to entries on a
-        /// filesystem) are always broken. But they might be good enough to use in the test suite.
-        ///
-        /// This fails if the path is not valid Unicode (as `String` is a bit easier to use here).
-        fn script_path(filename: impl AsRef<Path>) -> crate::Result<String> {
-            let path = gix_testtools::scripted_fixture_read_only("scripts.sh")?
+        use gix_testtools::bstr::{BString, ByteSlice, ByteVec};
+
+        fn script_path(filename: impl AsRef<Path>) -> crate::Result<OsString> {
+            let native_path = gix_testtools::scripted_fixture_read_only("scripts.sh")?
                 .join(filename)
-                .to_str()
-                .map(|p| {
-                    if cfg!(windows) {
-                        p.replace('\\', "/")
-                    } else {
-                        p.to_owned()
-                    }
-                })
-                .expect("valid UTF-8");
-            Ok(path)
+                .as_os_str()
+                .as_encoded_bytes()
+                .as_bstr()
+                .to_owned();
+            let unix_path = gix_path::to_unix_separators_on_windows(native_path)
+                .to_os_str()?
+                .to_owned();
+            Ok(unix_path)
         }
 
-        fn script_stdout_lines(
-            path: &str,
-            args: Option<&[&str]>, // Let us test calling vs. not calling `args` (rather than calling with `[]`).
+        fn script_stdout(
+            path: impl Into<OsString>,
+            args: Option<&[&OsStr]>, // Let us test calling vs. not calling `args` (rather than calling with `[]`).
             indirect: bool,
-        ) -> crate::Result<Vec<String>> {
+        ) -> crate::Result<BString> {
             let mut prep = gix_command::prepare(path);
             if indirect {
                 prep.use_shell = true;
@@ -615,19 +604,19 @@ mod spawn {
             let out = prep.spawn()?.wait_with_output()?;
             assert!(out.status.success());
             assert!(out.stderr.is_empty());
-            let lines = out
-                .stdout
-                .lines()
-                .map(|line| line.to_str().expect("valid UTF-8"))
-                .map(ToOwned::to_owned)
-                .collect();
-            Ok(lines)
+            Ok(out.stdout.into())
+        }
+
+        fn concatenate(prefix: &OsString, suffix: &str) -> BString {
+            let mut buffer = prefix.as_encoded_bytes().as_bstr().to_owned();
+            buffer.push_str(suffix);
+            buffer
         }
 
         fn do_trivial(indirect: bool) -> crate::Result {
             let path = script_path("trivial")?;
-            let lines = script_stdout_lines(&path, None, indirect)?;
-            assert_eq!(lines, ["Hello, world!"]);
+            let stdout = script_stdout(&path, None, indirect)?;
+            assert_eq!(stdout, "Hello, world!\n");
             Ok(())
         }
 
@@ -643,8 +632,9 @@ mod spawn {
 
         fn do_name_no_args(indirect: bool) -> crate::Result {
             let path = script_path("name-and-args")?;
-            let lines = script_stdout_lines(&path, None, indirect)?;
-            assert_eq!(lines, [path]);
+            let stdout = script_stdout(&path, None, indirect)?;
+            let expected = concatenate(&path, "\n");
+            assert_eq!(stdout, expected);
             Ok(())
         }
 
@@ -660,10 +650,10 @@ mod spawn {
 
         fn do_name_with_args(indirect: bool) -> crate::Result {
             let path = script_path("name-and-args")?;
-            let args = ["foo", "bar baz", "quux"];
-            let expected: Vec<_> = std::iter::once(path.as_str()).chain(args).collect();
-            let lines = script_stdout_lines(&path, Some(&args), indirect)?;
-            assert_eq!(lines, expected);
+            let args = ["foo", "bar baz", "quux"].map(OsStr::new);
+            let stdout = script_stdout(&path, Some(&args), indirect)?;
+            let expected = concatenate(&path, "\nfoo\nbar baz\nquux\n");
+            assert_eq!(stdout, expected);
             Ok(())
         }
 

@@ -265,7 +265,7 @@ theirs
             [gix_merge::blob::Driver {
                 name: "b".into(),
                 command:
-                    "for arg in  %O %A %B %L %P %S %X %Y %F; do echo $arg >> \"%A\"; done; cat \"%O\" \"%B\" >> \"%A\""
+                    r#"for arg in '%O' '%A' '%B' '%L' '%P' '%S' '%X' '%Y' '%F'; do echo "$arg" >> '%A'; done; cat '%O' '%B' >> '%A'"#
                         .into(),
                 ..Default::default()
             }],

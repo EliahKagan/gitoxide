@@ -136,6 +136,7 @@ jobs:
           - macos-latest
           - ubuntu-latest
           - ubuntu-22.04-arm
+      fail-fast: false
 
     runs-on: ${{ matrix.os }}
 

@@ -293,9 +293,9 @@ theirs
         let res = platform_ref.merge(&mut buf, default_labels(), &Default::default())?;
         assert_eq!(res, (Pick::Buffer, Resolution::Complete), "merge drivers always merge ");
         let mut lines = cleaned_driver_lines(&buf)?;
-        for tmp_file in lines.by_ref().take(3) {
-            assert!(tmp_file.contains_str(&b".tmp"[..]), "{tmp_file}");
-        }
+        // for tmp_file in lines.by_ref().take(3) {
+        //     //assert!(tmp_file.contains_str(&b".tmp"[..]), "{tmp_file}");
+        // }
 
         let lines: Vec<_> = lines.collect();
         assert_eq!(

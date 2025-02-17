@@ -575,12 +575,11 @@ mod spawn {
         use gix_testtools::bstr::{BString, ByteSlice, ByteVec};
 
         fn script_path(filename: impl AsRef<Path>) -> crate::Result<OsString> {
-            let native_path = gix_testtools::scripted_fixture_read_only("scripts.sh")?
+            let native_path: BString = gix_testtools::scripted_fixture_read_only("scripts.sh")?
                 .join(filename)
-                .as_os_str()
-                .as_encoded_bytes()
-                .as_bstr()
-                .to_owned();
+                .into_os_string()
+                .into_encoded_bytes()
+                .into();
             let unix_path = gix_path::to_unix_separators_on_windows(native_path)
                 .to_os_str()?
                 .to_owned();
@@ -607,8 +606,8 @@ mod spawn {
             Ok(out.stdout.into())
         }
 
-        fn concatenate(prefix: &OsString, suffix: &str) -> BString {
-            let mut buffer = prefix.as_encoded_bytes().as_bstr().to_owned();
+        fn concatenate(prefix: OsString, suffix: &str) -> BString {
+            let mut buffer: BString = prefix.into_encoded_bytes().into();
             buffer.push_str(suffix);
             buffer
         }
@@ -633,7 +632,7 @@ mod spawn {
         fn do_name_no_args(indirect: bool) -> crate::Result {
             let path = script_path("name-and-args")?;
             let stdout = script_stdout(&path, None, indirect)?;
-            let expected = concatenate(&path, "\n");
+            let expected = concatenate(path, "\n");
             assert_eq!(stdout, expected);
             Ok(())
         }
@@ -652,7 +651,7 @@ mod spawn {
             let path = script_path("name-and-args")?;
             let args = ["foo", "bar baz", "quux"].map(OsStr::new);
             let stdout = script_stdout(&path, Some(&args), indirect)?;
-            let expected = concatenate(&path, "\nfoo\nbar baz\nquux\n");
+            let expected = concatenate(path, "\nfoo\nbar baz\nquux\n");
             assert_eq!(stdout, expected);
             Ok(())
         }

@@ -572,20 +572,27 @@ mod spawn {
         use std::ffi::{OsStr, OsString};
         use std::path::Path;
 
-        use gix_testtools::bstr::{BString, ByteSlice, ByteVec};
-        use os_str_bytes::OsStringBytes;
+        use gix_testtools::bstr::{BString, ByteVec};
 
         fn script_path(filename: impl AsRef<Path>) -> crate::Result<OsString> {
-            // TODO(msrv): At 1.74, change into_raw_vec to into_encoded_bytes and don't depend on os_str_bytes.
-            let native_path: BString = gix_testtools::scripted_fixture_read_only("scripts.sh")?
+            let native_path = gix_testtools::scripted_fixture_read_only("scripts.sh")?
                 .join(filename)
-                .into_os_string()
-                .into_raw_vec()
-                .into();
-            let unix_path = gix_path::to_unix_separators_on_windows(native_path)
-                .to_os_str()?
-                .to_owned();
-            Ok(unix_path)
+                .into_os_string();
+            #[cfg(unix)]
+            {
+                Ok(native_path)
+            }
+            #[cfg(not(unix))]
+            {
+                // TODO(msrv): At 1.74, change into_raw_vec to into_encoded_bytes and don't depend on os_str_bytes.
+                use gix_testtools::bstr::ByteSlice;
+                use os_str_bytes::OsStringBytes;
+                let raw_native_path: BString = native_path.into_raw_vec().into();
+                let slash_path = gix_path::to_unix_separators_on_windows(raw_native_path)
+                    .to_os_str()?
+                    .to_owned();
+                Ok(slash_path)
+            }
         }
 
         fn script_stdout(
@@ -609,8 +616,18 @@ mod spawn {
         }
 
         fn concatenate(prefix: OsString, suffix: &str) -> BString {
-            // TODO(msrv): At 1.74, change into_raw_vec to into_encoded_bytes and don't depend on os_str_bytes.
-            let mut buffer: BString = prefix.into_raw_vec().into();
+            // TODO(msrv): At 1.74, use into_encoded_bytes instead of into_vec and into_raw_vec,
+            //             and don't depend on os_str_bytes.
+            #[cfg(unix)]
+            let mut buffer: BString = {
+                use std::os::unix::ffi::OsStringExt;
+                prefix.into_vec().into()
+            };
+            #[cfg(not(unix))]
+            let mut buffer: BString = {
+                use os_str_bytes::OsStringBytes;
+                prefix.into_raw_vec().into()
+            };
             buffer.push_str(suffix);
             buffer
         }

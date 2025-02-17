@@ -1549,6 +1549,7 @@ dependencies = [
  "gix-testtools",
  "gix-trace",
  "once_cell",
+ "os_str_bytes",
  "shell-words",
 ]
 
@@ -3672,6 +3673,12 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "os_str_bytes"
+version = "6.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
 
 [[package]]
 name = "overload"

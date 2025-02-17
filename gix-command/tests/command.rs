@@ -563,12 +563,14 @@ mod spawn {
         use std::path::Path;
 
         use gix_testtools::bstr::{BString, ByteSlice, ByteVec};
+        use os_str_bytes::OsStringBytes;
 
         fn script_path(filename: impl AsRef<Path>) -> crate::Result<OsString> {
+            // TODO(msrv): At 1.74, change into_raw_vec to into_encoded_bytes and don't depend on os_str_bytes.
             let native_path: BString = gix_testtools::scripted_fixture_read_only("scripts.sh")?
                 .join(filename)
                 .into_os_string()
-                .into_encoded_bytes()
+                .into_raw_vec()
                 .into();
             let unix_path = gix_path::to_unix_separators_on_windows(native_path)
                 .to_os_str()?
@@ -597,7 +599,8 @@ mod spawn {
         }
 
         fn concatenate(prefix: OsString, suffix: &str) -> BString {
-            let mut buffer: BString = prefix.into_encoded_bytes().into();
+            // TODO(msrv): At 1.74, change into_raw_vec to into_encoded_bytes and don't depend on os_str_bytes.
+            let mut buffer: BString = prefix.into_raw_vec().into();
             buffer.push_str(suffix);
             buffer
         }

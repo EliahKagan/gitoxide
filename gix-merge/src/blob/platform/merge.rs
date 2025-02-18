@@ -399,6 +399,7 @@ impl<'parent> PlatformRef<'parent> {
         match self.configured_driver() {
             Ok(driver) => {
                 let mut cmd = self.prepare_external_driver(driver.command.clone(), labels, context.clone())?;
+                panic!("{cmd:#?}");
                 let status = cmd.status().map_err(|err| Error::SpawnExternalDriver {
                     cmd: format!("{:?}", cmd.cmd),
                     source: err,

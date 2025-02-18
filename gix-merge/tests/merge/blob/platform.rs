@@ -265,7 +265,7 @@ theirs
             [gix_merge::blob::Driver {
                 name: "b".into(),
                 command:
-                    r#"for arg in '%O' '%A' '%B' '%L' '%P' '%S' '%X' '%Y' '%F'; do echo "$arg" >> '%A'; done; cat '%O' '%B' >> '%A'"#
+                    "for arg in  %O %A %B %L %P %S %X %Y %F; do echo $arg >> \"%A\"; done; cat \"%O\" \"%B\" >> \"%A\""
                         .into(),
                 ..Default::default()
             }],
@@ -293,9 +293,14 @@ theirs
         let res = platform_ref.merge(&mut buf, default_labels(), &Default::default())?;
         assert_eq!(res, (Pick::Buffer, Resolution::Complete), "merge drivers always merge ");
         let mut lines = cleaned_driver_lines(&buf)?;
-        // for tmp_file in lines.by_ref().take(3) {
-        //     //assert!(tmp_file.contains_str(&b".tmp"[..]), "{tmp_file}");
-        // }
+        panic!(
+            "original: {:#?}\ncleaned: {:#?}",
+            buf.lines().map(|s| s.as_bstr()).collect::<Vec<_>>(),
+            lines.collect::<Vec<_>>()
+        );
+        for tmp_file in lines.by_ref().take(3) {
+            assert!(tmp_file.contains_str(&b".tmp"[..]), "{tmp_file}");
+        }
 
         let lines: Vec<_> = lines.collect();
         assert_eq!(

@@ -399,6 +399,8 @@ impl<'parent> PlatformRef<'parent> {
         match self.configured_driver() {
             Ok(driver) => {
                 let mut cmd = self.prepare_external_driver(driver.command.clone(), labels, context.clone())?;
+                let arg1 = cmd.cmd.get_args().nth(1).unwrap().to_str().unwrap().to_owned();
+                std::fs::write("arg1", arg1)?;
                 let status = cmd.status().map_err(|err| Error::SpawnExternalDriver {
                     cmd: format!("{:?}", cmd.cmd),
                     source: err,

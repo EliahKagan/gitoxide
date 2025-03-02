@@ -1,0 +1,1 @@
+for arg in  C:\Users\ek\source\repos\gitoxide\gix-merge\.tmpV0qmjs C:\Users\ek\source\repos\gitoxide\gix-merge\.tmphsSiEQ C:\Users\ek\source\repos\gitoxide\gix-merge\.tmp6oOm3k 7 'b' 'ancestor label' 'current label' 'other label' %F; do echo $arg >> "C:\Users\ek\source\repos\gitoxide\gix-merge\.tmphsSiEQ"; done

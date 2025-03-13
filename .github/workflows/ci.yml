@@ -131,7 +131,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - name: Setup dependencies
         run: sudo apt-get install -y --no-install-recommends liblzma-dev
       - uses: extractions/setup-just@v3
@@ -149,7 +148,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: extractions/setup-just@v3
       - name: Run journey tests
         run: just ci-journey-tests
@@ -168,7 +166,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - name: Setup dependencies (macos)
         if: startsWith(matrix.os, 'macos')
         run: brew install openssl gnu-sed
@@ -222,7 +219,6 @@ jobs:
           git version
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
@@ -296,7 +292,6 @@ jobs:
             sh -s -- -y --default-host ${{ matrix.host-triple }} --profile minimal
       - name: Add Rust tools to path
         run: echo "PATH=$HOME/.cargo/bin:$PATH" >> "$GITHUB_ENV"
-      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
@@ -374,7 +369,6 @@ jobs:
           rustup update stable
           rustup default stable
           rustup target add "$TARGET"
-      - uses: Swatinem/rust-cache@v2
       - name: 'WASI only: crates without feature toggle'
         if: endsWith(matrix.target, '-wasi')
         run: |

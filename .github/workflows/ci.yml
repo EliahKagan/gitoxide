@@ -270,15 +270,13 @@ jobs:
       - name: Prerequisites
         run: |
           prerequisites=(
-            build-essential
             ca-certificates
-            cmake
             curl
+            gcc
             git
             jq
-            libssl-dev
+            libc-dev  # rustc, in the toolchain we are using, dynamically links to the system libc.
             libstdc++6:${{ matrix.runner-arch }}  # To support external 64-bit Node.js for actions.
-            pkgconf
           )
           dpkg --add-architecture ${{ matrix.runner-arch }}
           apt-get update
@@ -298,7 +296,7 @@ jobs:
       - name: Make `system` scope nonempty for "GitInstallation" tests
         run: git config --system gitoxide.imaginary.arbitraryVariable arbitraryValue
       - name: Test (nextest)
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --no-default-features --features max-pure --workspace --no-fail-fast
 
   lint:
     runs-on: ubuntu-latest

@@ -342,8 +342,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - name: Check all packages
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
+          arguments: --all-features
+          command: check advisories
+        continue-on-error: true
+      - name: Check all packages except gix-testtools
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          arguments: --exclude gix-testtools --all-features
           command: check advisories
 
   cargo-deny:

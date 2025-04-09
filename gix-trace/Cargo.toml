@@ -35,9 +35,6 @@ tracing-core = { version = "0.1.31", optional = true }
 
 document-features = { version = "0.2.0", optional = true }
 
-[dev-dependencies]
-array-init-cursor = { version = "0.2.1" }
-
 [package.metadata.docs.rs]
 all-features = true
 features = ["document-features"]

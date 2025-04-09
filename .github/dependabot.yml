@@ -11,7 +11,7 @@ updates:
     # Disable version updates for Rust dependencies. Security updates are still allowed.
     open-pull-requests-limit: 0
     commit-message:
-      prefix: null
+      prefix: ''
     groups:
       cargo:
         patterns: ['*']

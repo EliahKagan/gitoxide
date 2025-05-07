@@ -9,8 +9,16 @@ for tag in $tags; do
     commit="$(git rev-parse "$tag^{commit}")"
     time="$(TZ=UTC0 git show -s --date=iso-strict --format="%cd" "$commit")"
     key="$time $commit"
-    tag_line="  $tag"$'\n'
-    groups["$key"]+="$tag_line"
+
+    script='s@^v@gitoxide-v@; s@-v@/@; s@^@https://crates.io/api/v1/crates/@'
+    url="$(sed "$script" <<<"$tag")"
+    printf 'DEBUG: %s\n' "$url" >&2
+    json="$(curl -s "$url")"
+    filter='"\(.version.created_at) yanked=\(.version.yanked)"'
+    extracts="$(jq -r "$filter" <<<"$json")"
+
+    tag_line="$(printf '  %12s  (crates.io: %s)\n' "$tag" "$extracts")"
+    groups["$key"]+="$tag_line"$'\n'
 done
 
 by_time="$(printf '%s\n' "${!groups[@]}" | sort)"

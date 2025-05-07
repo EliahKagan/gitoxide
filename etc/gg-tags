@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+set -efuo pipefail
+IFS=$'\n'
+declare -A groups
+
+tags="$(git tag -l --sort=v:refname 'gix-v[0-9]*' 'v[0-9]*')"
+for tag in $tags; do
+    commit="$(git rev-parse "$tag^{commit}")"
+    time="$(TZ=UTC0 git show -s --date=iso-strict --format="%cd" "$commit")"
+    key="$time $commit"
+    tag_line="  $tag"$'\n'
+    groups["$key"]+="$tag_line"
+done
+
+by_time="$(printf '%s\n' "${!groups[@]}" | sort)"
+for key in $by_time; do
+    printf '\n%s:\n%s' "$key" "${groups["$key"]}"
+done

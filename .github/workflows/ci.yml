@@ -223,6 +223,11 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
+      - name: More writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed reps
+        run: |
+          # Add another "9" digit to the upper bound of the label range.
+          sed -Ei 's/^(#\[test_matrix\(0\.\.=)([[:digit:]]+\)])$/\19\2/' \
+            gix-worktree-state/tests/state/checkout.rs
       - name: Test (nextest)
         run: cargo nextest run --workspace --no-fail-fast --test-threads=2
 

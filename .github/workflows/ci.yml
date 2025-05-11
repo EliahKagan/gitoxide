@@ -189,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Use case-folding workspace directory
+      - name: Set up casefold directory
         run: |
           set -ux
           dd if=/dev/zero of=~/ext4-casefold.img bs=100M count=150
@@ -199,15 +199,24 @@ jobs:
           sudo chown -- "$USER" ~/ext4-casefold
           mkdir -- ~/ext4-casefold/icase
           chattr +F -- ~/ext4-casefold/icase
-          sudo mount --rbind -- ~/ext4-casefold/icase .
+      - name: Map workspace and TMPDIR
+        run: |
+          set -ux
+          mkdir -- ~/ext4-casefold/icase/{workspace,tmp}
+          sudo mount --rbind -- ~/ext4-casefold/icase/workspace .
+          printf 'TMPDIR=%s\n' ~/ext4-casefold/icase/tmp >> "$GITHUB_ENV"
       - name: Verify case-folding
         run: |
           set -ux
           shopt -s nullglob
-          touch a A
-          files=(?)
-          test "${#files[@]}" -eq 1
-          rm a
+          verify() {
+            touch a A
+            files=(?)
+            test "${#files[@]}" -eq 1
+            rm a
+          }
+          verify
+          (cd -- "$TMPDIR"; verify)
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

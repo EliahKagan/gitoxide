@@ -224,7 +224,7 @@ jobs:
         with:
           tool: nextest
       - name: Test (nextest)
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --workspace --no-fail-fast --test-threads=2
 
   test-fixtures-windows:
     runs-on: windows-latest

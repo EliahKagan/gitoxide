@@ -229,7 +229,15 @@ jobs:
           sed -Ei 's/^(#\[test_matrix\(0\.\.=)([[:digit:]]+\)])$/\19\2/' \
             gix-worktree-state/tests/state/checkout.rs
       - name: Test (nextest)
-        run: cargo nextest run --workspace --no-fail-fast --test-threads=2
+        run: cargo nextest run --workspace --no-fail-fast
+      - name: Retest writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed (nextest)
+        run: |
+          set -x
+          for i in {1..20}; do
+            cargo nextest run -p gix-worktree-state-tests \
+              writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed \
+              --no-fail-fast --test-threads=2
+          done
 
   test-fixtures-windows:
     runs-on: windows-latest

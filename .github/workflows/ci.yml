@@ -185,6 +185,38 @@ jobs:
       - name: Check that tracked archives are up to date
         run: git diff --exit-code  # If this fails, the fix is usually to commit a regenerated archive.
 
+  test-ext4-casefold:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Use case-folding workspace directory
+        run: |
+          set -ux
+          dd if=/dev/zero of=~/ext4-casefold.img bs=100M count=150
+          mkfs.ext4 -O casefold -- ~/ext4-casefold.img
+          mkdir -- ~/ext4-casefold
+          sudo mount -- ~/ext4-casefold.img ~/ext4-casefold
+          sudo chown -- "$USER" ~/ext4-casefold
+          mkdir -- ~/ext4-casefold/icase
+          chattr +F -- ~/ext4-casefold/icase
+          sudo mount --rbind -- ~/ext4-casefold/icase .
+      - name: Verify case-folding
+        run: |
+          set -ux
+          shopt -s nullglob
+          touch a A
+          files=(?)
+          test "${#files[@]}" -eq 1
+          rm a
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Test (nextest)
+        run: cargo nextest run --workspace --no-fail-fast
+
   test-fixtures-windows:
     runs-on: windows-latest
 
@@ -497,6 +529,7 @@ jobs:
       - test
       - test-journey
       - test-fast
+      - test-ext4-casefold
       - test-fixtures-windows
       - test-32bit
       - test-32bit-windows-size-doc

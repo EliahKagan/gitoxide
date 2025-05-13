@@ -185,7 +185,7 @@ jobs:
       - name: Check that tracked archives are up to date
         run: git diff --exit-code  # If this fails, the fix is usually to commit a regenerated archive.
 
-  test-ext4-casefold:
+  test-linux-casefold:
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
@@ -194,34 +194,32 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Set up casefold directory
+      - name: Set up casefold directories
         run: |
           set -ux
-          dd if=/dev/zero of=~/ext4-casefold.img bs=100M count=150
-          mkfs.ext4 -O casefold -- ~/ext4-casefold.img
-          mkdir -- ~/ext4-casefold
-          sudo mount -- ~/ext4-casefold.img ~/ext4-casefold
-          sudo chown -- "$USER" ~/ext4-casefold
-          mkdir -- ~/ext4-casefold/icase
-          chattr +F -- ~/ext4-casefold/icase
-      - name: Map workspace and TMPDIR
-        run: |
-          set -ux
-          mkdir -- ~/ext4-casefold/icase/{workspace,tmp}
-          sudo mount --rbind -- ~/ext4-casefold/icase/workspace .
-          printf 'TMPDIR=%s\n' ~/ext4-casefold/icase/tmp >> "$GITHUB_ENV"
-      - name: Verify case-folding
-        run: |
-          set -ux
-          shopt -s nullglob
-          verify() {
+
+          fold() (
+            cd -- "$1"
+
+            # Set up a case-folding tmpfs filesystem.
+            sudo mount -t tmpfs -o casefold tmpfs .
+            sudo chown -- "$USER" .
+            chattr +F .
+
+            # Test that case-folding really works.
             touch a A
             files=(?)
             test "${#files[@]}" -eq 1
             rm a
-          }
-          verify
-          (cd -- "$TMPDIR"; verify)
+          )
+
+          # Set up workspace.
+          fold .
+
+          # Set up TMPDIR.
+          mkdir -- ~/tmp
+          fold ~/tmp
+          printf 'TMPDIR=%s\n' ~/tmp >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -556,7 +554,7 @@ jobs:
       - test
       - test-journey
       - test-fast
-      - test-ext4-casefold
+      - test-linux-casefold
       - test-fixtures-windows
       - test-32bit
       - test-32bit-windows-size-doc

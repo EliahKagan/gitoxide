@@ -247,17 +247,14 @@ jobs:
           tool: nextest
       - name: More writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed reps
         run: |
-          # Add another "9" digit to the upper bound of the label range.
-          sed -Ei 's/^(#\[test_matrix\(0\.\.=)([[:digit:]]+\)])$/\19\2/' \
+          # Add two more "9" digits to the upper bound of the label range.
+          sed -Ei 's/^(#\[test_matrix\(0\.\.=)([[:digit:]]+\)])$/\199\2/' \
             gix-worktree-state/tests/state/checkout.rs
       - name: Test writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed (nextest)
         run: |
-          set -x
-          for i in {1..20}; do
-            cargo nextest run -p gix-worktree-state-tests \
-              writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed \
-              --no-fail-fast --test-threads=2
-          done
+          cargo nextest run -p gix-worktree-state-tests \
+            writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed \
+            --status-level=fail --test-threads=2
 
   test-fixtures-windows:
     runs-on: windows-latest

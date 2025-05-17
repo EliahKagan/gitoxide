@@ -185,7 +185,7 @@ jobs:
       - name: Check that tracked archives are up to date
         run: git diff --exit-code  # If this fails, the fix is usually to commit a regenerated archive.
 
-  test-linux-casefold:
+  test-ext4-casefold:
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
@@ -194,43 +194,33 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Set up casefold directories (in tmpfs-backed ext4)
+      - name: Warn if we could use tmpfs mounted with `-o casefold` instead
         run: |
-          set -ux
-
           case "$(cat </sys/fs/tmpfs/features/casefold || :)" in
           supported)
-            echo '::warning:: The runner system supports case-folding tmpfs, which is preferable.'
+            echo '::warning:: The runner OS supports case-folding tmpfs, which may be preferable.'
             ;;
           esac
-
-          # Create mount points.
-          mkdir -- ~/mnt ~/mnt/tmpfs-nocasefold ~/mnt/ext4-casefold
-
-          # Set up a tmpfs filesystem.
-          sudo mount -t tmpfs tmpfs -- ~/mnt/tmpfs-nocasefold
-          sudo chown -- "$USER" ~/mnt/tmpfs-nocasefold
-
-          # Set up a casefold-enabled ext4 filesystem backed by the tmpfs filesystem.
-          dd if=/dev/zero of=~/mnt/tmpfs-nocasefold/ext4-casefold.img bs=100M count=60
-          mkfs.ext4 -O casefold -- ~/mnt/tmpfs-nocasefold/ext4-casefold.img
-          sudo mount -- ~/mnt/tmpfs-nocasefold/ext4-casefold.img ~/mnt/ext4-casefold
-          sudo chown -- "$USER" ~/mnt/ext4-casefold
-
-          # Create a case-folding directory with `workspace` and `tmp` subdirectories.
-          mkdir -- ~/mnt/ext4-casefold/icase
-          chattr +F -- ~/mnt/ext4-casefold/icase
-          mkdir -- ~/mnt/ext4-casefold/icase/{workspace,tmp}
-
-          # Map our workspace to the `workspace` subdirectory.
-          sudo mount --rbind -- ~/mnt/ext4-casefold/icase/workspace .
-          cd .  # Pick up the bind.
-
-          # Arrange for the `tmp` subdirectory to be used instead of `/tmp`.
-          export TMPDIR=~/mnt/ext4-casefold/icase/tmp
-          echo "TMPDIR=$TMPDIR" >> "$GITHUB_ENV"
-
-          # Test that case-folding really works.
+      - name: Set up casefold directory
+        run: |
+          set -ux
+          dd if=/dev/zero of=~/ext4-casefold.img bs=100M count=150
+          mkfs.ext4 -O casefold -- ~/ext4-casefold.img
+          mkdir -- ~/ext4-casefold
+          sudo mount -- ~/ext4-casefold.img ~/ext4-casefold
+          sudo chown -- "$USER" ~/ext4-casefold
+          mkdir -- ~/ext4-casefold/icase
+          chattr +F -- ~/ext4-casefold/icase
+      - name: Arrange to map workspace and TMPDIR in all subsequent steps
+        run: |
+          set -ux
+          mkdir -- ~/ext4-casefold/icase/{workspace,tmp}
+          sudo mount --rbind -- ~/ext4-casefold/icase/workspace .
+          printf 'TMPDIR=%s\n' ~/ext4-casefold/icase/tmp >> "$GITHUB_ENV"
+      - name: Verify case folding in workspace and TMPDIR
+        run: |
+          set -ux
+          shopt -s nullglob
           verify() {
             touch a A
             files=(?)
@@ -568,7 +558,7 @@ jobs:
       - test
       - test-journey
       - test-fast
-      - test-linux-casefold
+      - test-ext4-casefold
       - test-fixtures-windows
       - test-32bit
       - test-32bit-windows-size-doc

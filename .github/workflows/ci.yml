@@ -185,20 +185,18 @@ jobs:
       - name: Check that tracked archives are up to date
         run: git diff --exit-code  # If this fails, the fix is usually to commit a regenerated archive.
 
+  # TODO(integration): Remove all or at least most test-ext4-casefold jobs prior to merging #2008.
   test-ext4-casefold:
     strategy:
       matrix:
         # `--test-threads` operand
         parallel-tests:
-          - 1  # Never seems to fail, which makes sense.
-          - 2
-          - 3  # Never seems to fail, which does NOT make sense.
-          - 4
-          - 5
-          - 6
-          - 7
+          - 1  # Never fails.
+          - 2  # Usually fails.
+          - 3  # Almost never fails, somehow!
+          - 4  # Usually fails.
         # Duplicate jobs
-        rep: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', O, P]
+        rep: [A, B, C, D, E, F, G]
       fail-fast: false
 
     runs-on: ubuntu-latest

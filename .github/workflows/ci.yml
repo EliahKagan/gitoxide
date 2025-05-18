@@ -249,7 +249,7 @@ jobs:
             gix-worktree-state/tests/state/checkout.rs
       - name: Test writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed (nextest)
         run: |
-          cargo nextest run -p gix-worktree-state-tests \
+          cargo nextest run -p gix-worktree-state-tests --no-default-features \
             writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed \
             --status-level=fail --test-threads=${{ matrix.parallel-tests }}
 

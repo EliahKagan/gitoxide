@@ -188,8 +188,17 @@ jobs:
   test-ext4-casefold:
     strategy:
       matrix:
-        parallel-tests: [2, 3, 4]
-        rep: [A, B, C, D, E, F, G, H]
+        # `--test-threads` operand
+        parallel-tests:
+          - 1  # Never seems to fail, which makes sense.
+          - 2
+          - 3  # Never seems to fail, which does NOT make sense.
+          - 4
+          - 5
+          - 6
+          - 7
+        # Duplicate jobs
+        rep: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', O, P]
       fail-fast: false
 
     runs-on: ubuntu-latest

@@ -189,6 +189,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
+        num: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
@@ -231,14 +232,13 @@ jobs:
           (cd -- "$TMPDIR"; verify)
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
       - name: More writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed reps
         run: |
-          # Add two more "9" digits to the upper bound of the label range.
-          sed -Ei 's/^(#\[test_matrix\(0\.\.=)([[:digit:]]+\)])$/\199\2/' \
+          # Prepend leading digits "24" to the upper bound of the label range.
+          sed -Ei 's/^(#\[test_matrix\(0\.\.=)([[:digit:]]+\)])$/\124\2/' \
             gix-worktree-state/tests/state/checkout.rs
       - name: Test writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed (nextest)
         run: |

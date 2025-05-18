@@ -188,11 +188,11 @@ jobs:
   test-ext4-casefold:
     strategy:
       matrix:
-        os-suffix: ['22.04', '24.04', '22.04-arm', '24.04-arm']
-        rep: [A, B, C, D, E]
+        parallel-tests: [2, 3, 4]
+        rep: [A, B, C, D, E, F, G, H]
       fail-fast: false
 
-    runs-on: ubuntu-${{ matrix.os-suffix }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Warn if we could use tmpfs mounted with `-o casefold` instead
@@ -244,7 +244,7 @@ jobs:
         run: |
           cargo nextest run -p gix-worktree-state-tests \
             writes_through_symlinks_are_prevented_even_if_overwriting_is_allowed \
-            --status-level=fail --test-threads=2
+            --status-level=fail --test-threads=${{ matrix.parallel-tests }}
 
   test-fixtures-windows:
     runs-on: windows-latest

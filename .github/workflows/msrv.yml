@@ -25,7 +25,6 @@ jobs:
         os:
           - windows-2022
           - ubuntu-latest
-          - macos-15  # FIXME(portability): Remove after testing new justfile changes.
 
     runs-on: ${{ matrix.os }}
 

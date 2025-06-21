@@ -84,8 +84,11 @@ pub(super) const EXE_NAME: &str = "git";
 /// The git executable is the one found in PATH or an alternative location.
 pub(super) static GIT_HIGHEST_SCOPE_CONFIG_PATH: Lazy<Option<BString>> = Lazy::new(exe_info);
 
+// There are a number of ways to refer to the null device on Windows, but they are not all equally
+// well supported. Git for Windows rejects `\\.\NUL` and `\\.\nul`, and on some system, even the
+// legacy name `NUL`, when capitalized. But Git for Widnows always accepts the lower-case `nul`.
 #[cfg(windows)]
-const NULL_DEVICE: &str = "NUL";
+const NULL_DEVICE: &str = "nul";
 #[cfg(not(windows))]
 const NULL_DEVICE: &str = "/dev/null";
 

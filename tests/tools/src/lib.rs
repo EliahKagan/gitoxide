@@ -619,7 +619,7 @@ fn scripted_fixture_read_only_with_args_inner(
 }
 
 #[cfg(windows)]
-const NULL_DEVICE: &str = "NUL";
+const NULL_DEVICE: &str = "nul"; // See `gix_path::env::git::NULL_DEVICE` on why this form is used.
 #[cfg(not(windows))]
 const NULL_DEVICE: &str = "/dev/null";
 

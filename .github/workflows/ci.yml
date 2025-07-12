@@ -208,7 +208,7 @@ jobs:
       matrix:
         os:
           - windows-latest
-          - macos-latest
+          - macos-15
           - ubuntu-latest
           - ubuntu-24.04-arm
 
@@ -474,7 +474,7 @@ jobs:
           - ubuntu-latest
           # We consider this script read-only and its effect is the same everywhere.
           # However, when changes are made to `etc/copy-packetline.sh`, re-enable the other platforms for testing.
-    #       - macos-latest
+          - macos-15
     #       - windows-latest
 
     runs-on: ${{ matrix.os }}

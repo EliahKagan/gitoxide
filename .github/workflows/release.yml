@@ -132,9 +132,9 @@ jobs:
           - target: s390x-unknown-linux-gnu
             os: ubuntu-latest
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-15
           - target: aarch64-apple-darwin
-            os: macos-latest
+            os: macos-15
           - target: x86_64-pc-windows-msvc
             os: windows-latest
           - target: x86_64-pc-windows-gnu
@@ -300,7 +300,7 @@ jobs:
 
   # Add a macOS universal binary archive for a feature using its built aarch64 and x86_64 assets.
   build-macos-universal2-release:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     needs: [ create-release, build-release ]
 

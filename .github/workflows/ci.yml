@@ -257,7 +257,14 @@ jobs:
     steps:
       - name: Upgrade Git for Windows
         # TODO(ci): Don't run this step once `windows-11-arm` ships a new enough Git.
-        # The Windows 11 ARM runner still ships Git 2.48.*, so it remains affected by #1849.
+        # The Windows 11 ARM runner still ships Git 2.48.*, so it remains affected by #1849. So we
+        # upgrade to the latest stable Git for Windows. We do this before `actions/checkout` for
+        # two reasons: so `actions/checkout` will itself use the new Git, verifying that it works,
+        # and so no dangling subprocess from the old Git will prevent the Inno Setup installer from
+        # replacing its files. We can't run our `upgrade-git-for-windows` composite action with a
+        # `./` path, because it has not been checked out. But we also want to use any changes that
+        # have just been made to it, so we specify the current repo and commit. But the `github`
+        # context is unavailable in `uses`, so we do this indirectly via the `dynamic-uses` action.
         if: matrix.os == 'windows-11-arm'
         uses: jenseng/dynamic-uses@v1
         with:

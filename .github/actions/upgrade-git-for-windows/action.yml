@@ -13,9 +13,6 @@ runs:
   using: composite
 
   steps:
-    - name: List files of this composite action  # FIXME: Remove this step after testing.
-      run: Get-ChildItem -Recurse -Name ${{ github.action_path }}/../../..
-      shell: pwsh
     - name: Report version/build of Git in this runner image
       run: git version --build-options
       shell: pwsh

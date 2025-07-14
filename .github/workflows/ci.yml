@@ -11,6 +11,8 @@ on:
   pull_request:
     branches:
       - main
+      - 'run-ci/**'     # FIXME: Remove after testing.
+      - '**/run-ci/**'  # FIXME: Remove after testing.
   workflow_dispatch:
 
 permissions:

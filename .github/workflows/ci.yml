@@ -259,7 +259,7 @@ jobs:
         # TODO(ci): Don't run this step once `windows-11-arm` ships a new enough Git.
         # The Windows 11 ARM runner still ships Git 2.48.*, so it remains affected by #1849.
         if: matrix.os == 'windows-11-arm'
-        uses: ./.github/actions/upgrade-git-for-windows
+        uses: ${{ github.repository }}/.github/actions/upgrade-git-for-windows@${{ github.sha }}
         with:
           arch: arm64
       - uses: actions/checkout@v4

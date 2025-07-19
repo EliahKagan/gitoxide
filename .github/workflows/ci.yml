@@ -220,6 +220,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Show PATH
+        if: startsWith(matrix.os, 'windows')
+        run: $Env:PATH -split ';'
+      - name: Find git
+        if: startsWith(matrix.os, 'windows')
+        run: where.exe git
       - uses: actions/checkout@v4
       - name: Install rustup
         if: matrix.os == 'windows-11-arm'
@@ -253,6 +259,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Show PATH
+        if: startsWith(matrix.os, 'windows')
+        run: $Env:PATH -split ';'
+      - name: Find git
+        if: startsWith(matrix.os, 'windows')
+        run: where.exe git
       - name: Report version/build of Git in this runner image
         run: git version --build-options
       - name: Upgrade Git for Windows to latest stable release

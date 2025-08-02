@@ -461,7 +461,7 @@ jobs:
       - name: crates with 'wasm' feature
         run: |
           set -x
-          for crate in gix-pack; do
+          for crate in gix-diff gix-pack; do
             cargo build -p "$crate" --features wasm --target "$TARGET"
           done
       - name: gix-pack with all features (including wasm)

@@ -401,7 +401,6 @@ jobs:
     strategy:
       matrix:
         target: [ wasm32-unknown-unknown, wasm32-wasip1 ]
-      fail-fast: false
 
     env:
       TARGET: ${{ matrix.target }}

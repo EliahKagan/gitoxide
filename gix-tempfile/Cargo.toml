@@ -38,7 +38,7 @@ once_cell = { version = "1.21.3", default-features = false, features = ["race", 
 tempfile = "3.20.0"
 
 signal-hook = { version = "0.3.18", default-features = false, optional = true }
-signal-hook-registry = { version = "1.4.5", optional = true }
+signal-hook-registry = { version = "1.4.6", optional = true }
 
 document-features = { version = "0.2.0", optional = true }
 

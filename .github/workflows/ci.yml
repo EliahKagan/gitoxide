@@ -314,6 +314,7 @@ jobs:
             runner-arch: arm64
             runner-os: ubuntu-24.04-arm
             host-triple: armv7-unknown-linux-gnueabihf
+      fail-fast: false
 
     runs-on: ${{ matrix.runner-os }}
 
@@ -330,7 +331,6 @@ jobs:
             git
             jq
             libssl-dev
-            libstdc++6:${{ matrix.runner-arch }}  # To support external 64-bit Node.js for actions.
             pkgconf
             python3-minimal
           )

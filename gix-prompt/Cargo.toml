@@ -18,7 +18,7 @@ doctest = false
 gix-command = { version = "^0.6.2", path = "../gix-command" }
 gix-config-value = { version = "^0.15.1", path = "../gix-config-value" }
 
-thiserror = "2.0.0"
+thiserror = "2.0.15"
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.0.8", features = ["termios"] }

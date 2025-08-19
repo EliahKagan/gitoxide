@@ -97,12 +97,12 @@ bstr = { version = "1.12.0", default-features = false, features = [
     "std",
     "unicode",
 ] }
-thiserror = "2.0.0"
+thiserror = "2.0.15"
 
 # for async-client
-async-trait = { version = "0.1.51", optional = true }
+async-trait = { version = "0.1.89", optional = true }
 futures-io = { version = "0.3.16", optional = true }
-futures-lite = { version = "2.1.0", optional = true }
+futures-lite = { version = "2.6.1", optional = true }
 pin-project-lite = { version = "0.2.6", optional = true }
 
 # for http-client
@@ -113,11 +113,11 @@ curl = { version = "0.4", optional = true }
 
 # for http-client-reqwest
 # all but the 'default-tls' feature
-reqwest = { version = "0.12.22", optional = true, default-features = false, features = ["blocking", "charset", "http2", "macos-system-configuration"] }
+reqwest = { version = "0.12.23", optional = true, default-features = false, features = ["blocking", "charset", "http2", "macos-system-configuration"] }
 
 ## If used in conjunction with `async-client`, the `connect()` method will become available along with supporting the git protocol over TCP,
 ## where the TCP stream is created using this crate.
-async-std = { version = "1.12.0", optional = true }
+async-std = { version = "1.13.2", optional = true }
 
 document-features = { version = "0.2.0", optional = true }
 
@@ -126,7 +126,7 @@ gix-pack = { path = "../gix-pack", default-features = false, features = [
     "streaming-input",
 ] }
 gix-hash = { path = "../gix-hash" }
-async-std = { version = "1.9.0", features = ["attributes"] }
+async-std = { version = "1.13.2", features = ["attributes"] }
 maybe-async = "0.2.6"
 blocking = "1.6.2"
 

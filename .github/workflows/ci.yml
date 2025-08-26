@@ -408,7 +408,7 @@ jobs:
   # This job is not required for PR auto-merge, so that sudden announcement of a
   # new advisory does not keep otherwise OK pull requests from being integrated.
   cargo-deny-advisories:
-    runs-on: macos-latest
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v5
@@ -418,7 +418,7 @@ jobs:
           arguments: --workspace --all-features
 
   cargo-deny:
-    runs-on: macos-latest
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v5

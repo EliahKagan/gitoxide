@@ -59,7 +59,7 @@ serde = { version = "1.0.114", optional = true, default-features = false, featur
 anyhow = "1.0.98"
 thiserror = "2.0.0"
 bytesize = "2.0.1"
-tempfile = "3.20.0"
+tempfile = "3.22.0"
 
 # for async-client
 async-trait = { version = "0.1.51", optional = true }

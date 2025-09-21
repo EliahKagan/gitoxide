@@ -563,6 +563,9 @@ jobs:
   check-no-persist-credentials:
     runs-on: ubuntu-latest
 
+    env:
+      GLOB: .github/workflows/*.@(yaml|yml)
+
     steps:
       - uses: actions/checkout@v5
         with:
@@ -571,7 +574,7 @@ jobs:
       - name: List workflows to be scanned
         run: |
           shopt -s extglob
-          printf '%s\n' .github/workflows/*.@(yaml|yml)
+          printf '%s\n' ${{ env.GLOB }}
       - name: Scan workflows
         run: |
           shopt -s extglob
@@ -579,10 +582,9 @@ jobs:
             | select(.uses == "actions/checkout@*" and .with.["persist-credentials"]? != false)
             | {"file": filename, "line": line, "name": (.name // .uses)}
             | .file + ":" + (.line | tostring) + ": " + .name
-          ' .github/workflows/*.@(yaml|yml) >query-output.txt
+          ' -- ${{ env.GLOB }} >query-output.txt
           cat query-output.txt
-      - name: Check for matches
-        run: test -z "$(<query-output.txt)"
+          test -z "$(<query-output.txt)"  # Report failure if we found anything.
 
   # Check that only jobs intended not to block PR auto-merge are omitted as
   # dependencies of the `tests-pass` job below, so that whenever a job is

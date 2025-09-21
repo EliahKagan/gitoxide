@@ -546,6 +546,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - name: Check that working tree is initially clean
         run: |
           set -x
@@ -610,7 +612,6 @@ jobs:
           echo "WORKFLOW_PATH=${relative_workflow_with_ref%@*}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v5
         with:
-          persist-credentials: false
           sparse-checkout: ${{ env.WORKFLOW_PATH }}
       - name: Get all jobs
         run: yq '.jobs | keys.[]' -- "$WORKFLOW_PATH" | sort | tee all-jobs.txt

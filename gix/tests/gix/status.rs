@@ -311,6 +311,22 @@ mod index_worktree {
         }
 
         #[test]
+        fn submodule_in_symlinked_dir() -> crate::Result {
+            let repo = submodule_repo("symlinked-git-dir")?;
+            let status = repo
+                .status(gix::progress::Discard)?
+                .index_worktree_options_mut(|opts| {
+                    opts.sorting =
+                        Some(gix::status::plumbing::index_as_worktree_with_renames::Sorting::ByPathCaseSensitive);
+                })
+                .into_index_worktree_iter(None)?;
+            for change in status {
+                change?;
+            }
+            Ok(())
+        }
+
+        #[test]
         fn submodule_modification() -> crate::Result {
             let repo = submodule_repo("modified-untracked-and-submodule-head-changed-and-modified")?;
             let mut status = repo

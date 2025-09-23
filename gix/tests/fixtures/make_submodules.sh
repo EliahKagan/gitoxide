@@ -152,3 +152,17 @@ git clone with-submodules not-a-submodule
 )
 
 git init unborn
+
+mkdir symlinked-git-dir
+(cd symlinked-git-dir
+  git init -q r1
+  (cd r1
+    git commit -q --allow-empty -m "init"
+  )
+
+  git config -f r1/.git/config core.worktree `pwd`
+  ln -s r1/.git .git
+
+  git -c protocol.file.allow=always submodule add ../module1 m1
+  git commit -m "add module 1"
+)

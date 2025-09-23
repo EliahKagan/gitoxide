@@ -160,7 +160,7 @@ mkdir symlinked-git-dir
     git commit -q --allow-empty -m "init"
   )
 
-  git config -f r1/.git/config core.worktree `pwd`
+  git config -f r1/.git/config core.worktree "$(pwd)"
   ln -s r1/.git .git
 
   git -c protocol.file.allow=always submodule add ../module1 m1

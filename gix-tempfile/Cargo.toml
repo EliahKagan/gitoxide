@@ -32,7 +32,7 @@ test = true
 
 [dependencies]
 gix-fs = { version = "^0.16.0", path = "../gix-fs" }
-parking_lot = "0.12.4"
+parking_lot = "0.12.5"
 dashmap = { version = "6.0.1", optional = true }
 tempfile = "3.23.0"
 
@@ -50,7 +50,7 @@ signals = ["dep:signal-hook", "dep:signal-hook-registry"]
 hp-hashmap = ["dep:dashmap"]
 
 [target.'cfg(not(windows))'.dependencies]
-libc = { version = "0.2.176", default-features = false }
+libc = { version = "0.2.177", default-features = false }
 
 [package.metadata.docs.rs]
 all-features = true

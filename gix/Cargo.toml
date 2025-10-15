@@ -384,12 +384,12 @@ async-std = { version = "1.12.0", optional = true }
 ##
 ## If disabled, the text will be search verbatim in any portion of the commit message, similar to
 ## how a simple unanchored regex of only 'normal' characters would work.
-regex = { version = "1.11.3", optional = true, default-features = false, features = [
+regex = { version = "1.12.2", optional = true, default-features = false, features = [
     "std",
 ] }
 
 # for `interrupt` feature
-parking_lot = { version = "0.12.4", optional = true }
+parking_lot = { version = "0.12.5", optional = true }
 
 document-features = { version = "0.2.0", optional = true }
 

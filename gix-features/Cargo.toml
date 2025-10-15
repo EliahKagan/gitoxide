@@ -93,7 +93,7 @@ gix-utils = { version = "^0.3.0", path = "../gix-utils", optional = true }
 
 # 'parallel' feature
 crossbeam-channel = { version = "0.5.15", optional = true }
-parking_lot = { version = "0.12.4", default-features = false, optional = true }
+parking_lot = { version = "0.12.5", default-features = false, optional = true }
 
 walkdir = { version = "2.3.2", optional = true } # used when parallel is off
 
@@ -118,7 +118,7 @@ once_cell = { version = "1.21.3", optional = true }
 document-features = { version = "0.2.0", optional = true }
 
 [target.'cfg(unix)'.dependencies]
-libc = { version = "0.2.176" }
+libc = { version = "0.2.177" }
 
 [dev-dependencies]
 bstr = { version = "1.12.0", default-features = false }

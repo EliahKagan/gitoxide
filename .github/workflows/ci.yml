@@ -234,6 +234,9 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Upgrade Git for Windows
+        if: startsWith(matrix.os, 'windows')
+        run: winget upgrade git --accept-source-agreements
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
@@ -285,6 +288,8 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Upgrade Git for Windows
+        run: winget upgrade git --accept-source-agreements
       - uses: actions/checkout@v5
         with:
           persist-credentials: false

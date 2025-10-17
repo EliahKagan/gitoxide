@@ -254,7 +254,8 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Upgrade Git for Windows to latest stable release
+      - &upgrade_git_for_windows
+        name: Upgrade Git for Windows to latest stable release
         if: startsWith(matrix.os, 'windows')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -361,6 +362,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - *upgrade_git_for_windows
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false

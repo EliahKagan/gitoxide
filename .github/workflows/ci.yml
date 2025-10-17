@@ -259,7 +259,7 @@ jobs:
         run: Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
       - name: Upgrade Git for Windows
         if: startsWith(matrix.os, 'windows')
-        run: winget upgrade git --accept-source-agreements
+        run: winget upgrade git --silent --accept-source-agreements --accept-package-agreements
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -333,7 +333,7 @@ jobs:
         if: matrix.os == 'windows-11-arm'
         run: Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
       - name: Upgrade Git for Windows
-        run: winget upgrade git --accept-source-agreements
+        run: winget upgrade git --silent --accept-source-agreements --accept-package-agreements
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false

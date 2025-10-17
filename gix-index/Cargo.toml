@@ -55,7 +55,7 @@ rustix = { version = "1.1.2", default-features = false, features = [
     "std",
     "fs",
 ] }
-libc = { version = "0.2.176" }
+libc = { version = "0.2.177" }
 
 [dev-dependencies]
 gix-testtools = { path = "../tests/tools" }

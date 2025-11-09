@@ -234,6 +234,45 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - &upgrade_git_for_windows
+        name: Upgrade Git for Windows to latest stable release
+        if: startsWith(matrix.os, 'windows')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OS: ${{ matrix.os }}
+        run: |
+          $workingDir = '~/git-dl'
+          $repo = 'git-for-windows/git'
+          $pattern = ($Env:OS -eq 'windows-11-arm' ? 'Git-*-arm64.exe' : 'Git-*-64-bit.exe')
+          $log = 'setup-log.txt'
+          # Inno Setup args reference: https://jrsoftware.org/ishelp/index.php?topic=setupcmdline
+          $arguments = @(
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/ALLUSERS',
+            "/LOG=$log",
+            '/NORESTART',
+            '/CLOSEAPPLICATIONS',
+            '/FORCECLOSEAPPLICATIONS'
+          )
+
+          Write-Output 'Version and build information BEFORE upgrade:'
+          Write-Output ''
+          git version --build-options
+          Write-Output ''
+
+          mkdir $workingDir | Out-Null
+          cd $workingDir
+          gh release download --repo $repo --pattern $pattern
+          $installer = Get-Item $pattern
+          Start-Process -FilePath $installer -ArgumentList $arguments -NoNewWindow -Wait
+
+          Get-Content -Path $log -Tail 50
+
+          Write-Output ''
+          Write-Output 'Version and build information AFTER upgrade:'
+          Write-Output ''
+          git version --build-options
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
@@ -285,6 +324,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - *upgrade_git_for_windows
       - uses: actions/checkout@v5
         with:
           persist-credentials: false

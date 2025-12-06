@@ -966,7 +966,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1056,13 +1056,13 @@ checksum = "3a3076410a55c90011c298b04d0cfa770b00fa04e1e3c97d3f6c9de105a03844"
 
 [[package]]
 name = "flate2"
-version = "1.1.5"
+version = "1.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfe33edd8e85a12a67454e37f8c75e730830d83e313556ab9ebf9ee7fbeb3bfb"
+checksum = "a2152dbcb980c05735e2a651d96011320a949eb31a0c8b38b72645ce97dec676"
 dependencies = [
  "crc32fast",
- "libz-rs-sys",
  "miniz_oxide",
+ "zlib-rs",
 ]
 
 [[package]]
@@ -2780,9 +2780,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.18"
+version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52e9a2a24dc5c6821e71a7030e1e14b7b632acac55c40e9d2e082c621261bb56"
+checksum = "727805d60e7938b76b826a6ef209eb70eaa1812794f9424d4a4e2d740662df5f"
 dependencies = [
  "base64",
  "bytes",
@@ -2989,7 +2989,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3050,7 +3050,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3164,9 +3164,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
-version = "0.2.177"
+version = "0.2.178"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
+checksum = "37c93d8daa9d8a012fd8ab92f088405fb202ea0b6ab73ee2482ae66af4f42091"
 
 [[package]]
 name = "libredox"
@@ -3192,9 +3192,9 @@ dependencies = [
 
 [[package]]
 name = "libz-rs-sys"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "840db8cf39d9ec4dd794376f38acc40d0fc65eec2a8f484f7fd375b84602becd"
+checksum = "8b484ba8d4f775eeca644c452a56650e544bf7e617f1d170fe7298122ead5222"
 dependencies = [
  "zlib-rs",
 ]
@@ -3240,9 +3240,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.28"
+version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
+checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 dependencies = [
  "value-bag",
 ]
@@ -3398,7 +3398,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3772,7 +3772,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3987,7 +3987,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4530,7 +4530,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4879,9 +4879,9 @@ dependencies = [
 
 [[package]]
 name = "tui-react"
-version = "0.23.2"
+version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2914a701e00f3311d869175d83dbb7da374ba9a22a6876f3aa6af2673d3accc6"
+checksum = "aefb69d822d1170fe1fbb50ec6cb2c534cdd20630a84ef5998e4c59a89a5b0e6"
 dependencies = [
  "log",
  "ratatui",
@@ -5163,7 +5163,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5862,6 +5862,6 @@ dependencies = [
 
 [[package]]
 name = "zlib-rs"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f06ae92f42f5e5c42443fd094f245eb656abf56dd7cce9b8b263236565e00f2"
+checksum = "36134c44663532e6519d7a6dfdbbe06f6f8192bde8ae9ed076e9b213f0e31df7"

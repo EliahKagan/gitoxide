@@ -1612,8 +1612,7 @@ dependencies = [
  "gix-trace",
  "gix-traverse",
  "gix-worktree",
- "imara-diff 0.1.8",
- "imara-diff 0.2.0",
+ "imara-diff",
  "serde",
  "thiserror 2.0.17",
 ]
@@ -1905,7 +1904,7 @@ dependencies = [
  "gix-trace",
  "gix-utils",
  "gix-worktree",
- "imara-diff 0.1.8",
+ "imara-diff",
  "pretty_assertions",
  "serde",
  "termtree",
@@ -2905,15 +2904,6 @@ checksum = "3acae9609540aa318d1bc588455225fb2085b9ed0c4f6bd0d9d5bcd86f1a0344"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
-]
-
-[[package]]
-name = "imara-diff"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17d34b7d42178945f775e84bc4c36dde7c1c6cdfea656d3354d009056f2bb3d2"
-dependencies = [
- "hashbrown 0.15.5",
 ]
 
 [[package]]

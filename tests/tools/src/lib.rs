@@ -561,7 +561,7 @@ fn scripted_fixture_for_hash_kind_read_only_with_args_inner(
             let potential_hash_suffix = if hash_kind == gix_hash::Kind::Sha1 {
                 "".into()
             } else {
-                format!("_{}", hash_kind)
+                format!("_{hash_kind}")
             };
             Path::new("generated-archives").join(format!(
                 "{}{suffix}{potential_hash_suffix}.tar{}",

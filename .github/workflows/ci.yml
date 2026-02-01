@@ -35,6 +35,15 @@ jobs:
         shell: bash  # Use `bash` even in the Windows job.
 
     steps:
+      - name: Put temporary files on a faster drive
+        if: startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-arm')
+        env:
+          NEW_TEMP: 'D:\a\_temp'
+        shell: pwsh
+        run: |
+          Get-Item -Path $Env:NEW_TEMP -ErrorAction Stop  # It should already exist.
+          Add-Content -Value "TEMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
+          Add-Content -Value "TMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -254,6 +263,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Put temporary files on a faster drive
+        if: startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-arm')
+        env:
+          NEW_TEMP: 'D:\a\_temp'
+        run: |
+          Get-Item -Path $Env:NEW_TEMP -ErrorAction Stop  # It should already exist.
+          Add-Content -Value "TEMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
+          Add-Content -Value "TMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -323,6 +340,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Put temporary files on a faster drive
+        if: startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-arm')
+        env:
+          NEW_TEMP: 'D:\a\_temp'
+        run: |
+          Get-Item -Path $Env:NEW_TEMP -ErrorAction Stop  # It should already exist.
+          Add-Content -Value "TEMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
+          Add-Content -Value "TMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -438,6 +463,14 @@ jobs:
       TARGET: i686-pc-windows-msvc
 
     steps:
+      - name: Put temporary files on a faster drive
+        if: startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-arm')
+        env:
+          NEW_TEMP: 'D:\a\_temp'
+        run: |
+          Get-Item -Path $Env:NEW_TEMP -ErrorAction Stop  # It should already exist.
+          Add-Content -Value "TEMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
+          Add-Content -Value "TMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false

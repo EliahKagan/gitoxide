@@ -234,6 +234,15 @@ jobs:
       PROFILE: release-github
 
     steps:
+      - name: Put temporary files on a faster drive
+        if: startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-arm')
+        env:
+          NEW_TEMP: 'D:\a\_temp'
+        run: |
+          Get-Item -Path $Env:NEW_TEMP -ErrorAction Stop  # It should already exist.
+          Add-Content -Value "TEMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
+          Add-Content -Value "TMP=$Env:NEW_TEMP" -Path $Env:GITHUB_ENV
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

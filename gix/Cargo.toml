@@ -466,7 +466,7 @@ walkdir = "2.3.2"
 serial_test = { version = "3.4.0", default-features = false }
 async-std = { version = "1.12.0", features = ["attributes"] }
 termtree = "1.0.0"
-insta = "1.46.3"
+insta = "1.47.2"
 
 [package.metadata.docs.rs]
 features = [

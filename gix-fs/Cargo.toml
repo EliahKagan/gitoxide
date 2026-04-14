@@ -27,7 +27,7 @@ thiserror = "2.0.18"
 serde = { version = "1.0.114", optional = true, default-features = false, features = ["std", "derive"] }
 
 # For `Capabilities` to assure parallel operation works.
-fastrand = { version = "2.1.0", default-features = false, features = ["std"] }
+fastrand = { version = "2.4.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 crossbeam-channel = "0.5.15"

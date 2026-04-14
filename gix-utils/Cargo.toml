@@ -18,6 +18,6 @@ doctest = true
 bstr = ["dep:bstr"]
 
 [dependencies]
-fastrand = "2.0.0"
+fastrand = "2.4.1"
 bstr = { version = "1.12.0", default-features = false, features = ["std"], optional = true }
 unicode-normalization = { version = "0.1.19", default-features = false }

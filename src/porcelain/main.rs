@@ -173,7 +173,9 @@ pub fn main() -> Result<()> {
             progress,
             progress_keep_open,
             crate::shared::STANDARD_RANGE,
-            move |_progress, out, _err| crate::licenses::cli::run(out, args),
+            // `ein` has no top-level `--format` flag; any JSON request must
+            // come from the subcommand itself, so Human is the inherited default.
+            move |_progress, out, _err| crate::licenses::cli::run(out, gitoxide_core::OutputFormat::Human, args),
         ),
         Subcommands::Completions { shell, out_dir } => {
             let mut app = Args::command();

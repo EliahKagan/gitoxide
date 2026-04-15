@@ -33,25 +33,30 @@ pub struct Command {
     /// release archive.
     #[clap(long)]
     pub all: bool,
-    /// Output format: `human` (default — readable table, or full attribution
-    /// text with `--all`) or `json` (the embedded manifest verbatim, or one
-    /// crate's entry when a crate name is given).
-    #[clap(long, short = 'f', default_value = "human")]
-    pub format: OutputFormat,
+    /// Override the output format for this subcommand specifically.
+    ///
+    /// When unset, the format is inherited from the binary's top-level
+    /// `--format` flag (for `gix`) or defaults to `human` (for `ein`, which
+    /// has no top-level `--format`). Valid values are `human` and `json`.
+    #[clap(long, short = 'f')]
+    pub format: Option<OutputFormat>,
 }
 
 /// Run the `licenses` subcommand against the given output sink.
 ///
-/// In human mode the output is formatted for reading; in JSON mode the
-/// embedded manifest is emitted verbatim (or one crate's entry, when a name
-/// was given).
+/// `inherited_format` is the format determined by the binary's top-level
+/// `--format` flag (or [`OutputFormat::Human`] if the binary has none); a
+/// subcommand-level `--format`, if given, takes precedence. This makes
+/// `gix --format json licenses`, `gix licenses --format json`, and
+/// `ein licenses --format json` all behave the same way.
 ///
-/// The runtime check against `OutputFormat::Human` mirrors how other
+/// The runtime check against [`OutputFormat::Human`] mirrors how other
 /// subcommands (e.g. `gitoxide_core::env`) handle an optional `Json` variant
 /// that exists only when `gitoxide-core/serde` is enabled — it compiles
 /// regardless of whether that feature is active.
-pub fn run(out: &mut dyn Write, args: Command) -> Result<()> {
-    if args.format != OutputFormat::Human {
+pub fn run(out: &mut dyn Write, inherited_format: OutputFormat, args: Command) -> Result<()> {
+    let format = args.format.unwrap_or(inherited_format);
+    if format != OutputFormat::Human {
         return match args.crate_name.as_deref() {
             None => emit_full_json(out),
             Some(name) => emit_single_crate_json(out, name),

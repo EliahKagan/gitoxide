@@ -173,7 +173,7 @@ pub fn main() -> Result<()> {
             progress,
             progress_keep_open,
             None,
-            move |_progress, out, _err| crate::licenses::cli::run(out, args),
+            move |_progress, out, _err| crate::licenses::cli::run(out, format, args),
         ),
         Subcommands::Merge(merge::Platform { cmd }) => match cmd {
             merge::SubCommands::File {

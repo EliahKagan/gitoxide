@@ -23,16 +23,6 @@
 use std::collections::BTreeSet;
 use std::process::Command;
 
-/// Host triple as reported by the `rustc` that cargo would use.
-fn host_target() -> String {
-    let out = Command::new("rustc").arg("-vV").output().expect("run `rustc -vV`");
-    let text = String::from_utf8(out.stdout).expect("rustc output is UTF-8");
-    match text.lines().find_map(|l| l.strip_prefix("host: ")) {
-        Some(host) => host.trim().to_string(),
-        None => panic!("no `host:` line in rustc -vV output:\n{text}"),
-    }
-}
-
 /// Invoke `cargo metadata` for the top-level `gitoxide` package with the
 /// given feature set and target platform, returning the set of names of
 /// every third-party (non-workspace, sourced) crate it reports.
@@ -74,15 +64,25 @@ fn third_party_crate_names(features: &[&str], platform: &str) -> BTreeSet<String
 // ---------------------------------------------------------------------------
 // Feature-set variation
 // ---------------------------------------------------------------------------
+//
+// These tests pin the platform to `FEATURE_TEST_TARGET` rather than the CI
+// host, because platform-specific transitive deps can legitimately differ
+// (e.g. on Windows, `curl`'s TLS layer is Schannel, so `openssl-sys` is not
+// pulled in by `max`). We want to verify the FEATURE differences and leave
+// the platform concerns to the platform-variation tests below.
+
+/// Platform triple used for feature-variation probes. Chosen because its
+/// `max` profile resolves to the most-tested canonical HTTP backend
+/// (`curl` + `openssl-sys`), giving a stable expected set of discriminators.
+const FEATURE_TEST_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 #[test]
 fn max_feature_profile_pulls_in_curl_and_openssl_backends() {
-    let host = host_target();
-    let crates = third_party_crate_names(&["max"], &host);
+    let crates = third_party_crate_names(&["max"], FEATURE_TEST_TARGET);
     for expected in ["curl", "curl-sys", "openssl-sys", "openssl-probe"] {
         assert!(
             crates.contains(expected),
-            "`max` profile must include `{expected}` on {host} \
+            "`max` profile must include `{expected}` on {FEATURE_TEST_TARGET} \
              (got {} crates)",
             crates.len(),
         );
@@ -91,8 +91,7 @@ fn max_feature_profile_pulls_in_curl_and_openssl_backends() {
 
 #[test]
 fn max_feature_profile_does_not_include_rustls_or_reqwest() {
-    let host = host_target();
-    let crates = third_party_crate_names(&["max"], &host);
+    let crates = third_party_crate_names(&["max"], FEATURE_TEST_TARGET);
     for forbidden in ["reqwest", "rustls"] {
         assert!(
             !crates.contains(forbidden),
@@ -104,12 +103,11 @@ fn max_feature_profile_does_not_include_rustls_or_reqwest() {
 
 #[test]
 fn max_pure_feature_profile_pulls_in_reqwest_and_rustls() {
-    let host = host_target();
-    let crates = third_party_crate_names(&["max-pure"], &host);
+    let crates = third_party_crate_names(&["max-pure"], FEATURE_TEST_TARGET);
     for expected in ["reqwest", "rustls", "hyper"] {
         assert!(
             crates.contains(expected),
-            "`max-pure` profile must include `{expected}` on {host} \
+            "`max-pure` profile must include `{expected}` on {FEATURE_TEST_TARGET} \
              (got {} crates)",
             crates.len(),
         );
@@ -118,8 +116,7 @@ fn max_pure_feature_profile_pulls_in_reqwest_and_rustls() {
 
 #[test]
 fn max_pure_feature_profile_does_not_include_curl_or_openssl() {
-    let host = host_target();
-    let crates = third_party_crate_names(&["max-pure"], &host);
+    let crates = third_party_crate_names(&["max-pure"], FEATURE_TEST_TARGET);
     for forbidden in ["curl", "curl-sys", "openssl-sys"] {
         assert!(
             !crates.contains(forbidden),
@@ -131,17 +128,17 @@ fn max_pure_feature_profile_does_not_include_curl_or_openssl() {
 
 #[test]
 fn small_profile_is_strict_subset_of_max_profile() {
-    let host = host_target();
-    let small = third_party_crate_names(&["small"], &host);
-    let max = third_party_crate_names(&["max"], &host);
+    let small = third_party_crate_names(&["small"], FEATURE_TEST_TARGET);
+    let max = third_party_crate_names(&["max"], FEATURE_TEST_TARGET);
     let in_small_only: Vec<&String> = small.difference(&max).collect();
     assert!(
         in_small_only.is_empty(),
-        "`small` should be a subset of `max` on {host}, but these are only in `small`: {in_small_only:?}",
+        "`small` should be a subset of `max` on {FEATURE_TEST_TARGET}, \
+         but these are only in `small`: {in_small_only:?}",
     );
     assert!(
         small.len() < max.len(),
-        "`small` ({}) should have strictly fewer dependencies than `max` ({}) on {host}",
+        "`small` ({}) should have strictly fewer dependencies than `max` ({}) on {FEATURE_TEST_TARGET}",
         small.len(),
         max.len(),
     );

@@ -75,7 +75,10 @@ pub fn collect_crate_license_files(dir: &Path) -> Vec<LicenseFile> {
 /// license but do not themselves carry a separate license text; users who
 /// need the exception's wording should consult the crate source directly.
 pub fn parse_spdx_ids(expression: &str) -> Vec<String> {
-    let normalized = expression.replace('(', " ( ").replace(')', " ) ");
+    // Normalize so tokenization handles parens, the pre-SPDX `/` "OR"
+    // separator (still seen on crates.io in `"MIT/Apache-2.0"` style), and
+    // slashes nestled against an identifier.
+    let normalized = expression.replace('(', " ( ").replace(')', " ) ").replace('/', " OR ");
     let mut ids: Vec<String> = Vec::new();
     let mut skip_next = false;
     for tok in normalized.split_whitespace() {
@@ -194,6 +197,14 @@ mod tests {
     #[test]
     fn parses_or_expression() {
         assert_eq!(parse_spdx_ids("MIT OR Apache-2.0"), vec!["Apache-2.0", "MIT"]);
+    }
+
+    #[test]
+    fn parses_legacy_slash_separator() {
+        // Pre-SPDX syntax still appears on crates.io; treat it as `OR`.
+        assert_eq!(parse_spdx_ids("MIT/Apache-2.0"), vec!["Apache-2.0", "MIT"]);
+        assert_eq!(parse_spdx_ids("Apache-2.0/MIT"), vec!["Apache-2.0", "MIT"]);
+        assert_eq!(parse_spdx_ids("Unlicense/MIT"), vec!["MIT", "Unlicense"]);
     }
 
     #[test]

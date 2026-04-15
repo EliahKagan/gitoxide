@@ -166,6 +166,15 @@ pub fn main() -> Result<()> {
                 )
             }
         },
+        Subcommands::Licenses(args) => prepare_and_run(
+            "licenses",
+            trace,
+            verbose,
+            progress,
+            progress_keep_open,
+            crate::shared::STANDARD_RANGE,
+            move |_progress, out, _err| crate::licenses::cli::run(out, args),
+        ),
         Subcommands::Completions { shell, out_dir } => {
             let mut app = Args::command();
 

@@ -279,6 +279,26 @@ jobs:
           mkdir -- "$ARCHIVE"
           cp -- {README.md,LICENSE-*,CHANGELOG.md} "$ARCHIVE/"
 
+          # Ship the third-party dependency license manifest alongside the
+          # binaries. `build.rs` emits both a pre-rendered plain-text
+          # concatenation (byte-identical to `gix licenses --all`) and the
+          # structured JSON manifest into `OUT_DIR`, which for this build
+          # lives under `target/$TARGET/release-github/build/gitoxide-*/out/`.
+          # The hash in the directory name is deterministic for a given build
+          # configuration, but we guard against the glob matching zero or
+          # more than one directory so any toolchain change that breaks this
+          # assumption fails loudly instead of silently shipping incomplete
+          # attribution.
+          shopt -s nullglob
+          out_dirs=( "$TARGET_DIR/$PROFILE"/build/gitoxide-*/out )
+          if (( ${#out_dirs[@]} != 1 )); then
+            printf 'expected exactly one gitoxide OUT_DIR under %s, found %d: %s\n' \
+              "$TARGET_DIR/$PROFILE/build" "${#out_dirs[@]}" "${out_dirs[*]}" >&2
+            exit 1
+          fi
+          cp -- "${out_dirs[0]}/third_party_licenses.txt"  "$ARCHIVE/THIRD-PARTY-LICENSES.txt"
+          cp -- "${out_dirs[0]}/third_party_licenses.json" "$ARCHIVE/THIRD-PARTY-LICENSES.json"
+
       - name: Build archive (Windows)
         if: matrix.os == 'windows-latest'
         run: |

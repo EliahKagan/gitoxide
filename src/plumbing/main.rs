@@ -169,6 +169,15 @@ pub fn main() -> Result<()> {
             move |_progress, out, _err| core::env(out, format),
         ),
         Subcommands::Editor { paths } => core::repository::editor(repository(Mode::Lenient)?, paths),
+        Subcommands::Licenses(args) => prepare_and_run(
+            "licenses",
+            trace,
+            verbose,
+            progress,
+            progress_keep_open,
+            None,
+            move |_progress, out, _err| crate::licenses::cli::run(out, args),
+        ),
         Subcommands::Merge(merge::Platform { cmd }) => match cmd {
             merge::SubCommands::File {
                 resolve_with,

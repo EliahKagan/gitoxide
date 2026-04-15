@@ -41,6 +41,9 @@ pub enum Subcommands {
     #[cfg(feature = "gitoxide-core-tools")]
     #[clap(subcommand)]
     Tool(ToolCommands),
+    /// Show license, copyright, attribution, and notice information for
+    /// every third-party dependency statically linked into this binary.
+    Licenses(crate::licenses::cli::Command),
     /// Generate shell completions to stdout or a directory.
     #[clap(visible_alias = "generate-completions", visible_alias = "shell-completions")]
     Completions {

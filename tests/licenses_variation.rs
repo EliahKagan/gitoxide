@@ -25,15 +25,12 @@ use std::process::Command;
 
 /// Host triple as reported by the `rustc` that cargo would use.
 fn host_target() -> String {
-    let out = Command::new("rustc")
-        .arg("-vV")
-        .output()
-        .expect("run `rustc -vV`");
+    let out = Command::new("rustc").arg("-vV").output().expect("run `rustc -vV`");
     let text = String::from_utf8(out.stdout).expect("rustc output is UTF-8");
-    text.lines()
-        .find_map(|l| l.strip_prefix("host: "))
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| panic!("no `host:` line in rustc -vV output:\n{text}"))
+    match text.lines().find_map(|l| l.strip_prefix("host: ")) {
+        Some(host) => host.trim().to_string(),
+        None => panic!("no `host:` line in rustc -vV output:\n{text}"),
+    }
 }
 
 /// Invoke `cargo metadata` for the top-level `gitoxide` package with the
@@ -55,8 +52,7 @@ fn third_party_crate_names(features: &[&str], platform: &str) -> BTreeSet<String
         output.status,
         String::from_utf8_lossy(&output.stderr),
     );
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse cargo-metadata JSON");
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse cargo-metadata JSON");
     let workspace_members: BTreeSet<String> = metadata["workspace_members"]
         .as_array()
         .expect("workspace_members is an array")
@@ -167,9 +163,7 @@ fn windows_target_includes_winapi_and_windows_family() {
         "Windows target must include `winapi`; got {} total crates",
         crates.len(),
     );
-    let has_windows_family = crates
-        .iter()
-        .any(|n| n == "windows" || n.starts_with("windows-"));
+    let has_windows_family = crates.iter().any(|n| n == "windows" || n.starts_with("windows-"));
     assert!(
         has_windows_family,
         "Windows target must include at least one crate from the `windows*` family \
@@ -181,21 +175,13 @@ fn windows_target_includes_winapi_and_windows_family() {
 fn non_windows_targets_do_not_include_winapi_or_windows_family() {
     for platform in [LINUX_TARGET, APPLE_TARGET] {
         let crates = third_party_crate_names(&["max-pure"], platform);
-        assert!(
-            !crates.contains("winapi"),
-            "{platform} must not include `winapi`",
-        );
+        assert!(!crates.contains("winapi"), "{platform} must not include `winapi`",);
         assert!(
             !crates.contains("winapi-util"),
             "{platform} must not include `winapi-util`",
         );
-        let has_windows_family = crates
-            .iter()
-            .any(|n| n == "windows" || n.starts_with("windows-"));
-        assert!(
-            !has_windows_family,
-            "{platform} must not include any `windows*` crate",
-        );
+        let has_windows_family = crates.iter().any(|n| n == "windows" || n.starts_with("windows-"));
+        assert!(!has_windows_family, "{platform} must not include any `windows*` crate",);
     }
 }
 
@@ -221,10 +207,7 @@ fn non_apple_targets_do_not_include_security_framework() {
     for platform in [LINUX_TARGET, WINDOWS_TARGET] {
         let crates = third_party_crate_names(&["max-pure"], platform);
         for forbidden in ["security-framework", "security-framework-sys"] {
-            assert!(
-                !crates.contains(forbidden),
-                "{platform} must not include `{forbidden}`",
-            );
+            assert!(!crates.contains(forbidden), "{platform} must not include `{forbidden}`",);
         }
     }
 }
@@ -235,14 +218,8 @@ fn unix_targets_include_nix_and_windows_does_not() {
     // and macOS but not on Windows.
     for platform in [LINUX_TARGET, APPLE_TARGET] {
         let crates = third_party_crate_names(&["max-pure"], platform);
-        assert!(
-            crates.contains("nix"),
-            "Unix target {platform} should include `nix`",
-        );
+        assert!(crates.contains("nix"), "Unix target {platform} should include `nix`",);
     }
     let win_crates = third_party_crate_names(&["max-pure"], WINDOWS_TARGET);
-    assert!(
-        !win_crates.contains("nix"),
-        "Windows target should not include `nix`",
-    );
+    assert!(!win_crates.contains("nix"), "Windows target should not include `nix`",);
 }

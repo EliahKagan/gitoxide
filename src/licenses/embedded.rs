@@ -166,7 +166,7 @@ mod tests {
                 Some(line)
             } else if let Some(rest) = line.strip_prefix("allow") {
                 let rest = rest.trim_start();
-                let rest = rest.strip_prefix('=').map(str::trim_start).unwrap_or(rest);
+                let rest = rest.strip_prefix('=').map_or(rest, str::trim_start);
                 if let Some(after_open) = rest.strip_prefix('[') {
                     collecting_allow = true;
                     Some(after_open)

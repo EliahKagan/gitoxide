@@ -23,9 +23,10 @@ const LICENSE_FILE_PREFIXES: &[&str] = &["LICENSE", "LICENCE", "COPYING", "NOTIC
 /// Return `true` if `name` looks like a license/notice filename.
 ///
 /// A filename matches when, after uppercasing, it starts with one of the
-/// [`LICENSE_FILE_PREFIXES`] followed by end-of-name, `'.'`, `'-'`, or `'_'`
-/// (so `LICENSE`, `LICENSE-MIT`, `LICENSE.md`, `NOTICE_FOR_X` all match,
-/// while unrelated names like `LICENSES.md` or `AUTHORSHIP` do not).
+/// recognised prefixes (`LICENSE`, `LICENCE`, `COPYING`, `NOTICE`, `AUTHORS`,
+/// `COPYRIGHT`) followed by end-of-name, `'.'`, `'-'`, or `'_'`. So
+/// `LICENSE`, `LICENSE-MIT`, `LICENSE.md`, `NOTICE_FOR_X` all match, while
+/// unrelated names like `LICENSES.md` or `AUTHORSHIP` do not.
 pub fn is_license_filename(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     LICENSE_FILE_PREFIXES

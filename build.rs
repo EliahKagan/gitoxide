@@ -55,8 +55,18 @@ fn main() {
     // `TARGET` captures cross-builds, and the render/types source files are
     // pulled in via `#[path]` — changes to them must also trigger rebuilds.
     println!("cargo:rerun-if-changed=Cargo.lock");
+    // Every source file we include via `#[path]` needs an explicit rerun
+    // trigger — Cargo only tracks files it discovered through the normal
+    // module tree, and build.rs pulls these in out-of-band.
     println!("cargo:rerun-if-changed=src/licenses/types.rs");
     println!("cargo:rerun-if-changed=src/licenses/render.rs");
+    println!("cargo:rerun-if-changed=src/licenses/spdx_texts.rs");
+    println!("cargo:rerun-if-changed=src/licenses/build_support.rs");
+    // The MIT / Apache-2.0 fallback texts live in repo-root files that
+    // `spdx_texts.rs` pulls in with `include_str!`. Changes to them must
+    // re-emit the manifest too.
+    println!("cargo:rerun-if-changed=LICENSE-MIT");
+    println!("cargo:rerun-if-changed=LICENSE-APACHE");
     println!("cargo:rerun-if-env-changed=TARGET");
     println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
     println!("cargo:rerun-if-env-changed=CI");

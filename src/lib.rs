@@ -23,6 +23,7 @@
 #![allow(missing_docs)]
 #![deny(unsafe_code)]
 
+pub mod licenses;
 pub mod plumbing;
 pub mod porcelain;
 /// everything in common between the `gix` and `ein` binaries.

@@ -191,7 +191,26 @@ terminal_size = "0.4.2"
 # Avoid pre-compiled binaries, see https://github.com/serde-rs/serde/issues/2538 and https://github.com/serde-rs/serde/pull/2590
 serde_derive = ">=1.0.185"
 
+# Runtime parsing and decompression of the third-party dependency license
+# manifest that `build.rs` writes (gzip-compressed) into `OUT_DIR`. The
+# compressed form is what is embedded in the `gix` / `ein` binaries to keep
+# their size down — the uncompressed `.txt` copy only appears in the release
+# archive, not in the binary.
+serde = { version = "1.0.185", features = ["derive"] }
+serde_json = "1.0"
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
+
 document-features = { version = "0.2.0", optional = true }
+
+[build-dependencies]
+# Used by `build.rs` to discover third-party dependencies, compress the
+# resulting manifest, and emit the artifacts embedded into the binaries and
+# copied into the release archive as `THIRD-PARTY-LICENSES.{txt,json}`.
+cargo_metadata = "0.19"
+serde = { version = "1.0.185", features = ["derive"] }
+serde_json = "1.0"
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
+
 [profile.dev.package]
 insta.opt-level = 3
 similar.opt-level = 3

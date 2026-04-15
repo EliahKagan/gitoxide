@@ -97,4 +97,155 @@ mod tests {
         );
     }
 
+    /// Every crate the embedded manifest surfaces must be coverable by
+    /// `deny.toml`'s `[licenses] allow = [...]` list.
+    ///
+    /// This mirrors cargo-deny's semantics: a crate passes when at least one
+    /// SPDX identifier in its expression is in the allowlist for `OR` unions,
+    /// and every identifier is in the allowlist for `AND` conjunctions. Our
+    /// SPDX parser is slightly different from cargo-deny's, which makes this
+    /// a useful belt-and-suspenders check for drift.
+    ///
+    /// We approximate the per-crate rule as "the intersection of this crate's
+    /// parsed SPDX ids with the allowlist must be non-empty"; a full
+    /// boolean-expression evaluator would be more faithful but would require
+    /// reproducing cargo-deny's SPDX parser here, which is overkill.
+    #[test]
+    fn every_crate_is_coverable_by_deny_toml_allowlist() {
+        use std::collections::BTreeSet;
+        use std::path::Path;
+
+        let manifest = load().expect("load manifest");
+        let deny_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("deny.toml");
+        let deny_content = std::fs::read_to_string(&deny_path).expect("read deny.toml");
+        let allow: BTreeSet<String> = parse_deny_allow_list(&deny_content);
+        assert!(
+            !allow.is_empty(),
+            "parse_deny_allow_list returned no SPDX ids — the parser broke, not the data"
+        );
+
+        let mut unsatisfied: Vec<(String, String, Vec<String>)> = Vec::new();
+        for c in &manifest.crates {
+            let Some(expr) = c.spdx.as_deref() else {
+                continue;
+            };
+            let ids = super::super::build_support::parse_spdx_ids(expr);
+            let intersection: Vec<String> = ids.iter().filter(|id| allow.contains(*id)).cloned().collect();
+            if intersection.is_empty() {
+                unsatisfied.push((c.name.clone(), c.version.clone(), ids));
+            }
+        }
+        assert!(
+            unsatisfied.is_empty(),
+            "crates whose SPDX expression has no overlap with deny.toml allowlist: {unsatisfied:?}",
+        );
+    }
+
+    fn parse_deny_allow_list(contents: &str) -> std::collections::BTreeSet<String> {
+        use std::collections::BTreeSet;
+
+        // Minimal TOML scanner targeted at `deny.toml`'s shape — finds the
+        // `[licenses]` table's `allow` array and collects every double-quoted
+        // SPDX identifier inside it, across a single-line or multi-line form.
+        // A full TOML parser would be nicer but pulling one in as a dev-dep
+        // just to read this shape feels disproportionate.
+        let mut allow = BTreeSet::new();
+        let mut in_licenses_section = false;
+        let mut collecting_allow = false;
+        for raw_line in contents.lines() {
+            let line = strip_toml_comment(raw_line).trim();
+            if let Some(section) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                in_licenses_section = section.trim() == "licenses";
+                collecting_allow = false;
+                continue;
+            }
+            if !in_licenses_section {
+                continue;
+            }
+            let body = if collecting_allow {
+                Some(line)
+            } else if let Some(rest) = line.strip_prefix("allow") {
+                let rest = rest.trim_start();
+                let rest = rest.strip_prefix('=').map(str::trim_start).unwrap_or(rest);
+                if let Some(after_open) = rest.strip_prefix('[') {
+                    collecting_allow = true;
+                    Some(after_open)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(body) = body {
+                let (before_close, hit_close) = match body.find(']') {
+                    Some(idx) => (&body[..idx], true),
+                    None => (body, false),
+                };
+                extract_quoted_ids(before_close, &mut allow);
+                if hit_close {
+                    collecting_allow = false;
+                }
+            }
+        }
+        allow
+    }
+
+    fn strip_toml_comment(line: &str) -> &str {
+        // Good enough: comments in deny.toml's allow section don't contain `"`.
+        line.find('#').map_or(line, |idx| &line[..idx])
+    }
+
+    fn extract_quoted_ids(s: &str, out: &mut std::collections::BTreeSet<String>) {
+        let mut rest = s;
+        while let Some(start) = rest.find('"') {
+            let after = &rest[start + 1..];
+            if let Some(end) = after.find('"') {
+                out.insert(after[..end].to_string());
+                rest = &after[end + 1..];
+            } else {
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn parses_deny_toml_allow_list_shape() {
+        let toml = r#"
+[licenses]
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Zlib",
+]
+[bans]
+multiple-versions = "allow"
+"#;
+        let allow = parse_deny_allow_list(toml);
+        let expected: std::collections::BTreeSet<String> =
+            ["Apache-2.0", "MIT", "Zlib"].into_iter().map(String::from).collect();
+        assert_eq!(allow, expected);
+    }
+
+    #[test]
+    fn parses_deny_toml_allow_list_inline() {
+        let toml = r#"[licenses]
+allow = ["MIT", "ISC"]
+"#;
+        let allow = parse_deny_allow_list(toml);
+        let expected: std::collections::BTreeSet<String> = ["MIT", "ISC"].into_iter().map(String::from).collect();
+        assert_eq!(allow, expected);
+    }
+
+    #[test]
+    fn parse_deny_allow_list_ignores_other_sections() {
+        let toml = r#"
+[bans]
+allow = ["not-a-license"]
+[licenses]
+allow = ["MIT"]
+"#;
+        let allow = parse_deny_allow_list(toml);
+        assert!(!allow.contains("not-a-license"));
+        assert!(allow.contains("MIT"));
+    }
 }

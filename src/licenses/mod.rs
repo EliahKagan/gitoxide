@@ -16,6 +16,7 @@
 //! hand-built manifests.
 
 pub mod build_support;
+pub mod cli;
 pub mod embedded;
 pub mod render;
 pub mod spdx_texts;

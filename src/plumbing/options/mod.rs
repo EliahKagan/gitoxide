@@ -161,6 +161,9 @@ pub enum Subcommands {
     Merge(merge::Platform),
     /// Print paths relevant to the Git installation.
     Env,
+    /// Show license, copyright, attribution, and notice information for
+    /// every third-party dependency statically linked into this binary.
+    Licenses(crate::licenses::cli::Command),
     Diff(diff::Platform),
     Log(log::Platform),
     /// Interactively browse commits and their graph.

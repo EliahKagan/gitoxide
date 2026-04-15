@@ -25,7 +25,7 @@ const FILE_DIVIDER: &str = "----------------------------------------------------
 
 /// Write the manifest header describing which feature profile, target, and
 /// generation timestamp the manifest corresponds to.
-fn write_header(w: &mut impl Write, manifest: &Manifest) -> io::Result<()> {
+fn write_header(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
     writeln!(w, "gitoxide third-party dependencies")?;
     let profile = manifest.feature_profile.as_deref().unwrap_or("(custom features)");
     writeln!(w, "Feature profile: {profile}")?;
@@ -37,7 +37,7 @@ fn write_header(w: &mut impl Write, manifest: &Manifest) -> io::Result<()> {
 }
 
 /// Render a column-aligned summary table of all third-party dependencies.
-pub fn render_summary(w: &mut impl Write, manifest: &Manifest) -> io::Result<()> {
+pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
     write_header(w, manifest)?;
 
     let name_width = manifest
@@ -99,7 +99,7 @@ pub fn render_summary(w: &mut impl Write, manifest: &Manifest) -> io::Result<()>
 }
 
 /// Write one crate's full attribution, including every license/notice file.
-fn write_crate(w: &mut impl Write, c: &CrateLicense) -> io::Result<()> {
+fn write_crate(w: &mut (impl Write + ?Sized), c: &CrateLicense) -> io::Result<()> {
     writeln!(w, "{} {}", c.name, c.version)?;
     let spdx = c.spdx.as_deref().unwrap_or("(none)");
     writeln!(w, "License: {spdx}")?;
@@ -150,7 +150,7 @@ fn write_crate(w: &mut impl Write, c: &CrateLicense) -> io::Result<()> {
 /// Returns an error of kind [`io::ErrorKind::NotFound`] if the crate is not
 /// present in the manifest. This keeps the surface compatible with other I/O
 /// errors a caller's sink may produce and lets a single `?` handle both.
-pub fn render_crate(w: &mut impl Write, manifest: &Manifest, name: &str) -> io::Result<()> {
+pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &str) -> io::Result<()> {
     let Some(c) = manifest.find(name) else {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -164,7 +164,7 @@ pub fn render_crate(w: &mut impl Write, manifest: &Manifest, name: &str) -> io::
 ///
 /// This is the byte-for-byte form shipped as `THIRD-PARTY-LICENSES.txt` in
 /// release archives.
-pub fn render_all(w: &mut impl Write, manifest: &Manifest) -> io::Result<()> {
+pub fn render_all(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
     write_header(w, manifest)?;
     for (i, c) in manifest.crates.iter().enumerate() {
         if i > 0 {

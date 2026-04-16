@@ -195,8 +195,10 @@ serde_derive = ">=1.0.185"
 # manifest that `build.rs` writes (gzip-compressed) into `OUT_DIR`. The
 # compressed form is what is embedded in the `gix` / `ein` binaries to keep
 # their size down — the uncompressed `.txt` copy only appears in the release
-# archive, not in the binary.
-serde = { version = "1.0.185", features = ["derive"] }
+# archive, not in the binary. (`serde` itself is not needed here — the
+# `Serialize`/`Deserialize` derives live in `gitoxide-core::licenses::types`
+# which has its own `serde` dep; `serde_json` is the only serialization
+# crate gitoxide's source uses directly.)
 serde_json = "1.0"
 miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
 

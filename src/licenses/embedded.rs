@@ -118,7 +118,24 @@ mod tests {
             .filter(|c| c.files.is_empty())
             .map(|c| format!("{} {} (spdx={:?})", c.name, c.version, c.spdx))
             .collect();
-        assert!(missing.is_empty(), "crates with no attribution text: {missing:?}",);
+        assert!(
+            missing.is_empty(),
+            "The following crates have no license text in the embedded manifest:\n  \
+             {missing}\n\n\
+             This means `build.rs` found no LICENSE/COPYING/NOTICE file in the \
+             crate's source tree AND our bundled SPDX fallback table \
+             (`spdx_texts.rs`) does not cover the crate's declared license.\n\n\
+             To fix, either:\n  \
+             1. Open an issue or PR on the upstream crate to ship a LICENSE file \
+             (preferred — gets the actual copyright notice).\n  \
+             2. Add the missing SPDX id's canonical text to \
+             `gitoxide-core/src/licenses/spdx_texts.rs` as a fallback \
+             (acceptable for common licenses, but the text won't have the \
+             crate's specific copyright line).\n  \
+             3. If the crate genuinely has no applicable license text, investigate \
+             whether it should be in the dependency tree at all.",
+            missing = missing.join("\n  "),
+        );
     }
 
     /// The manifest must include both direct and transitive dependencies.

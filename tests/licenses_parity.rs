@@ -63,8 +63,7 @@ fn cargo_metadata_crate_names(features: &[&str], platform: &str) -> BTreeSet<Str
         output.status,
         String::from_utf8_lossy(&output.stderr),
     );
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse cargo-metadata JSON");
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse cargo-metadata JSON");
     let workspace_members: BTreeSet<String> = metadata["workspace_members"]
         .as_array()
         .expect("workspace_members is an array")
@@ -95,8 +94,7 @@ fn gix_manifest_crate_names() -> BTreeSet<String> {
         output.status,
         String::from_utf8_lossy(&output.stderr),
     );
-    let data: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse `gix licenses` JSON");
+    let data: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse `gix licenses` JSON");
     data["crates"]
         .as_array()
         .expect("`crates` is an array")

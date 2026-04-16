@@ -590,7 +590,8 @@ jobs:
       # Both scopes stay narrow (`-p`) so this job doesn't duplicate the
       # whole-workspace work already done by `test` / `test-fast`.
       - name: Run gitoxide-core licenses tests
-        run: cargo test -p gitoxide-core --features serde licenses::
+        run: |
+          cargo test -p gitoxide-core --features serde -- licenses::
       - name: Run gitoxide licenses tests
         run: cargo test -p gitoxide --no-default-features --features "$FEATURE"
 

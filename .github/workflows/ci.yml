@@ -537,14 +537,13 @@ jobs:
           command: check bans licenses sources
           arguments: --workspace --all-features
 
-  # Build `gix` and `ein` across the standard feature profiles and every
-  # major OS, then sanity-check the third-party license manifest the binaries
-  # embed: the JSON must parse, crate counts must be sensible, every crate
-  # must carry attribution text (from source or from the bundled SPDX
-  # fallback), and the metadata fields must match the build's feature
-  # profile and target triple.
-  licenses-smoke:
-    name: Licenses manifest smoke test
+  # Exercise the third-party license manifest across OSes and feature
+  # profiles. The actual invariants are asserted by Rust tests in
+  # `src/licenses/` (unit) and `tests/licenses_{parity,variation}.rs`
+  # (integration) — this job just runs `cargo test` for each combination,
+  # so failures point at a real test by name rather than a CI heredoc.
+  licenses:
+    name: Licenses manifest tests
 
     strategy:
       fail-fast: false
@@ -579,105 +578,13 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Build gix and ein
-        run: cargo build --no-default-features --features "$FEATURE" --bin gix --bin ein
-      - name: Sanity-check the embedded manifest
-        run: |
-          set -euo pipefail
-          suffix=""
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            suffix=".exe"
-          fi
-          gix="./target/debug/gix${suffix}"
-          ein="./target/debug/ein${suffix}"
-
-          # The summary table and `--all` rendering must not panic.
-          "$gix" licenses >/dev/null
-          "$gix" licenses --all >/dev/null
-          "$ein" licenses >/dev/null
-
-          # The JSON form must parse and hold a plausible dependency set.
-          # Use RUNNER_TEMP so this works on all runner OSes (notably Windows,
-          # where `/tmp` does not exist in the bash shell).
-          out="${RUNNER_TEMP:-/tmp}/licenses-smoke.json"
-          "$gix" licenses --format json > "$out"
-          python3 - "$FEATURE" "$out" <<'PY'
-          import json, sys
-          expected_feature, path = sys.argv[1], sys.argv[2]
-          with open(path, encoding="utf-8") as fh:
-              data = json.load(fh)
-          assert data["feature_profile"] == expected_feature, (
-              f"expected feature_profile={expected_feature!r}, got {data['feature_profile']!r}"
-          )
-          assert data["target_triple"], "target_triple must be non-empty"
-          assert len(data["crates"]) >= 50, (
-              f"fewer than 50 third-party crates — likely a regression: {len(data['crates'])}"
-          )
-          missing = [c for c in data["crates"] if not c["files"]]
-          if missing:
-              for c in missing[:20]:
-                  print(
-                      f"MISSING-TEXT: {c['name']} {c['version']} spdx={c['spdx']!r}",
-                      file=sys.stderr,
-                  )
-              sys.exit(f"{len(missing)} crates have no license text at all")
-          PY
-
-  # Independent check that the set of crates in the embedded manifest
-  # matches the set cargo sees for the same feature profile. Catches any
-  # regression in `build.rs`'s workspace/filter-platform handling.
-  licenses-parity:
-    name: Licenses cargo-tree parity
-
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Install Rust
-        run: |
-          rustup update stable
-          rustup default stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Build gix
-        run: cargo build --no-default-features --features max-pure --bin gix
-      - name: Compare cargo-metadata and embedded manifest crate sets
-        run: |
-          set -euo pipefail
-
-          # Crate names cargo resolves for this feature profile, filtered to
-          # non-workspace (third-party) packages on the host target.
-          cargo metadata --no-default-features --features max-pure \
-            --filter-platform "$(rustc -vV | awk '/^host:/ {print $2}')" \
-            --format-version 1 \
-          | python3 -c '
-          import json, sys
-          data = json.load(sys.stdin)
-          ws = set(data.get("workspace_members", []))
-          names = sorted({p["name"] for p in data["packages"]
-                          if p["id"] not in ws and p.get("source")})
-          print("\n".join(names))
-          ' | sort -u > /tmp/cargo-names.txt
-
-          # Crate names the binary reports.
-          ./target/debug/gix licenses --format json \
-          | python3 -c '
-          import json, sys
-          data = json.load(sys.stdin)
-          names = sorted({c["name"] for c in data["crates"]})
-          print("\n".join(names))
-          ' | sort -u > /tmp/gix-names.txt
-
-          echo "cargo-metadata crate count: $(wc -l < /tmp/cargo-names.txt)"
-          echo "gix-manifest crate count:   $(wc -l < /tmp/gix-names.txt)"
-          diff -u /tmp/cargo-names.txt /tmp/gix-names.txt
+      # Runs every licenses-related unit test in `src/licenses/` plus the
+      # `licenses_parity` and `licenses_variation` integration tests in
+      # `tests/`. `-p gitoxide` scopes to the top-level package so we don't
+      # rebuild the whole workspace's test suite here — that's already
+      # covered by the existing `test` / `test-fast` jobs.
+      - name: Run licenses tests
+        run: cargo test -p gitoxide --no-default-features --features "$FEATURE"
 
   wasm:
     name: WebAssembly
@@ -848,8 +755,7 @@ jobs:
       - test-32bit-windows-size-doc
       - lint
       - cargo-deny
-      - licenses-smoke
-      - licenses-parity
+      - licenses
       - check-no-persist-credentials
       - check-blocking
 

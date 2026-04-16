@@ -216,10 +216,19 @@ fn collect_manifest() -> Result<Manifest, String> {
     same_attribution_ws.sort();
     same_attribution_ws.dedup();
 
-    let crates: Vec<CrateLicense> = to_attribute
+    let mut crates: Vec<CrateLicense> = to_attribute
         .into_iter()
         .map(|(p, is_workspace_member)| build_crate_entry(p, is_workspace_member))
         .collect();
+
+    // The Rust standard library (std, core, alloc, compiler_builtins,
+    // hashbrown, libc, etc.) is statically linked into every compiled
+    // binary. It is dual-licensed Apache-2.0 OR MIT with no linking
+    // exception, so distributing the binary requires attribution.
+    // Add it as a manifest entry so `gix licenses` and the archive's
+    // THIRD-PARTY-LICENSES files are comprehensive.
+    crates.push(stdlib_entry());
+    crates.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
 
     Ok(Manifest {
         crates,
@@ -262,6 +271,50 @@ fn build_crate_entry(p: &cargo_metadata::Package, is_workspace_member: bool) -> 
         files,
         used_spdx_fallback,
         is_workspace_member,
+    }
+}
+
+/// Produce a manifest entry for the Rust standard library itself.
+///
+/// The stdlib is statically linked into every Rust binary. Its license
+/// (Apache-2.0 OR MIT, no linking exception) requires attribution in
+/// distributed binaries. We include the canonical MIT and Apache-2.0
+/// license texts from the repo root, matching the stdlib's own licensing.
+/// The version is taken from `rustc --version`.
+///
+/// For the full per-component breakdown (hashbrown, libc, unicode data,
+/// etc.) the Rust toolchain ships a COPYRIGHT-library.html in the
+/// sysroot; we don't parse that here but interested users can consult it.
+fn stdlib_entry() -> CrateLicense {
+    let version = Command::new(if cfg!(windows) { "rustc.exe" } else { "rustc" })
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| {
+            let s = String::from_utf8(o.stdout).ok()?;
+            // "rustc 1.82.0 (f6e511eec 2024-10-15)" → "1.82.0"
+            s.split_whitespace().nth(1).map(String::from)
+        })
+        .unwrap_or_else(|| "unknown".into());
+
+    let files = build_support::spdx_fallback_files("Apache-2.0 OR MIT", spdx_texts::text_for);
+
+    CrateLicense {
+        name: "Rust Standard Library".into(),
+        version,
+        spdx: Some("Apache-2.0 OR MIT".into()),
+        authors: vec!["The Rust Project Developers (see https://thanks.rust-lang.org)".into()],
+        repository: Some("https://github.com/rust-lang/rust".into()),
+        homepage: Some("https://www.rust-lang.org".into()),
+        files,
+        used_spdx_fallback: true,
+        // Synthetic entry: not a workspace member of `gitoxide`, not a
+        // third-party crate cargo resolved either. The flag exists to
+        // distinguish workspace-with-separate-attribution rows in the
+        // summary table; the stdlib is in neither bucket, so `false`
+        // (the default) is the right answer — it groups with the
+        // third-party section.
+        is_workspace_member: false,
     }
 }
 

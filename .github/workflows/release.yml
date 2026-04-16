@@ -303,20 +303,6 @@ jobs:
           cp -- "${out_dirs[0]}/third_party_licenses.txt"  "$ARCHIVE/THIRD-PARTY-LICENSES.txt"
           cp -- "${out_dirs[0]}/third_party_licenses.json" "$ARCHIVE/THIRD-PARTY-LICENSES.json"
 
-          # The Rust standard library is statically linked into every
-          # Rust binary and is dual-licensed under Apache-2.0 OR MIT
-          # with NO linking exception (unlike GCC's runtime). Ship its
-          # own COPYRIGHT file so users have the attribution material
-          # the license requires. The file lives in the sysroot of
-          # whatever toolchain built this binary.
-          stdlib_copyright="$(rustc --print sysroot)/share/doc/rust/COPYRIGHT-library.html"
-          if [ -f "$stdlib_copyright" ]; then
-            cp -- "$stdlib_copyright" "$ARCHIVE/RUST-STDLIB-COPYRIGHT.html"
-          else
-            printf 'warning: %s not found — stdlib attribution will be missing from the archive\n' \
-              "$stdlib_copyright" >&2
-          fi
-
           # Validate the manifest: reject stubs, verify the JSON is
           # parseable and has the expected feature profile and a plausible
           # crate count, and confirm no crate is missing license text.

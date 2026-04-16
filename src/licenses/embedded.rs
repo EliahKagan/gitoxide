@@ -112,14 +112,62 @@ mod tests {
     #[test]
     fn every_crate_has_at_least_one_license_file() {
         let manifest = load().expect("load manifest");
+        if let Err(msg) = check_no_missing_license_text(&manifest) {
+            panic!("{msg}");
+        }
+    }
+
+    /// Verify the diagnostic message when a crate IS missing text.
+    /// Uses a hand-built manifest so the test is self-contained and
+    /// does not depend on the real embedded data.
+    #[test]
+    fn missing_license_text_diagnostic_names_crate_and_gives_guidance() {
+        use gitoxide_core::licenses::{CrateLicense, Manifest};
+
+        let manifest = Manifest {
+            crates: vec![CrateLicense {
+                name: "hypothetical-isc-crate".into(),
+                version: "0.1.0".into(),
+                spdx: Some("ISC".into()),
+                authors: vec![],
+                repository: None,
+                homepage: None,
+                files: vec![], // deliberately empty
+                used_spdx_fallback: false,
+            }],
+            generated_at: "test".into(),
+            feature_profile: None,
+            target_triple: "test".into(),
+        };
+        let err = check_no_missing_license_text(&manifest).expect_err("should fail for empty files");
+        assert!(
+            err.contains("hypothetical-isc-crate"),
+            "diagnostic must name the offending crate; got:\n{err}",
+        );
+        assert!(
+            err.contains("spdx_texts.rs"),
+            "diagnostic must mention the fallback table; got:\n{err}",
+        );
+        assert!(
+            err.contains("upstream crate"),
+            "diagnostic must suggest upstreaming a LICENSE file; got:\n{err}",
+        );
+    }
+
+    /// Check that every crate in `manifest` has at least one license file.
+    /// Returns `Ok(())` if all do, or an `Err` with a diagnostic message
+    /// listing the offending crates and remediation steps.
+    fn check_no_missing_license_text(manifest: &gitoxide_core::licenses::Manifest) -> Result<(), String> {
         let missing: Vec<String> = manifest
             .crates
             .iter()
             .filter(|c| c.files.is_empty())
             .map(|c| format!("{} {} (spdx={:?})", c.name, c.version, c.spdx))
             .collect();
-        assert!(
-            missing.is_empty(),
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(format!(
             "The following crates have no license text in the embedded manifest:\n  \
              {missing}\n\n\
              This means `build.rs` found no LICENSE/COPYING/NOTICE file in the \
@@ -135,7 +183,7 @@ mod tests {
              3. If the crate genuinely has no applicable license text, investigate \
              whether it should be in the dependency tree at all.",
             missing = missing.join("\n  "),
-        );
+        ))
     }
 
     /// The manifest must include both direct and transitive dependencies.

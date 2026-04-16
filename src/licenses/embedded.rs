@@ -212,6 +212,34 @@ mod tests {
         );
     }
 
+    /// The Rust standard library is statically linked into every binary
+    /// and has no linking exception. It must appear in the manifest so
+    /// `gix licenses` and the archive files are comprehensive.
+    #[test]
+    fn manifest_includes_rust_standard_library() {
+        let manifest = load().expect("load manifest");
+        let hits = manifest.find_all("Rust Standard Library");
+        assert_eq!(
+            hits.len(),
+            1,
+            "manifest must include exactly one Rust Standard Library entry; found {}",
+            hits.len()
+        );
+        let stdlib = hits[0];
+        assert_eq!(
+            stdlib.spdx.as_deref(),
+            Some("Apache-2.0 OR MIT"),
+            "stdlib license should be Apache-2.0 OR MIT",
+        );
+        assert!(!stdlib.files.is_empty(), "stdlib entry must have license text");
+        // Synthetic entry: classified as not-a-workspace-member, so it
+        // groups with the third-party section in the summary view.
+        assert!(
+            !stdlib.is_workspace_member,
+            "stdlib synthetic entry should not be flagged as a workspace member"
+        );
+    }
+
     /// Workspace members with different license or authorship must appear
     /// in the manifest alongside third-party deps. `gix-imara-diff` is
     /// vendored from upstream under Apache-2.0 (not the root's
@@ -371,6 +399,27 @@ mod tests {
             "runtime rendering drifted from build-time rendering (byte counts: runtime={}, build={})",
             rendered.len(),
             txt_from_out_dir.len(),
+        );
+    }
+
+    #[test]
+    fn embedded_json_matches_archive_json_byte_for_byte() {
+        // The `THIRD-PARTY-LICENSES.json` in release archives is the
+        // uncompressed JSON that `build.rs` writes to `OUT_DIR`. The
+        // binary embeds a zlib-compressed copy (`.json.gz`) which
+        // `embedded::json()` decompresses. The two must be identical so
+        // `gix licenses --format json` always agrees with the archive.
+        let from_binary = json().expect("decompress embedded JSON");
+
+        let from_out_dir = std::fs::read_to_string(concat!(env!("OUT_DIR"), "/third_party_licenses.json"))
+            .expect("archive .json must exist in OUT_DIR");
+
+        assert_eq!(
+            from_binary,
+            from_out_dir,
+            "embedded JSON drifted from build-time JSON (byte counts: embedded={}, build={})",
+            from_binary.len(),
+            from_out_dir.len(),
         );
     }
 

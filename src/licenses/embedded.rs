@@ -145,6 +145,48 @@ mod tests {
         );
     }
 
+    /// Workspace members with different license or authorship must appear
+    /// in the manifest alongside third-party deps. `gix-imara-diff` is
+    /// vendored from upstream under Apache-2.0 (not the root's
+    /// `MIT OR Apache-2.0`) with a different author — it is the strongest
+    /// case for separate attribution. `gix-config` has the same license
+    /// but a different sole author (Edward Shen). Both must be present.
+    ///
+    /// Test crates like `gix-config-tests` share authorship traits but
+    /// are never linked into the binary; they must NOT appear.
+    #[test]
+    fn workspace_members_with_different_attribution_are_included() {
+        let manifest = load().expect("load manifest");
+        let names: std::collections::BTreeSet<&str> = manifest.crates.iter().map(|c| c.name.as_str()).collect();
+
+        // Apache-2.0-only vendored crate — different license AND author.
+        assert!(
+            names.contains("gix-imara-diff"),
+            "vendored workspace member `gix-imara-diff` (Apache-2.0, different author) \
+             must appear in the manifest",
+        );
+
+        // Same license, different sole author.
+        assert!(
+            names.contains("gix-config"),
+            "workspace member `gix-config` (different author: Edward Shen) \
+             must appear in the manifest",
+        );
+
+        // Test crate — different author but not linked into the binary.
+        assert!(
+            !names.contains("gix-config-tests"),
+            "test workspace member `gix-config-tests` must NOT appear in \
+             the manifest (not linked into the binary)",
+        );
+
+        // Root package itself must never appear.
+        assert!(
+            !names.contains("gitoxide"),
+            "root package `gitoxide` must not appear in its own manifest",
+        );
+    }
+
     /// `build.rs` derives `feature_profile` from the `CARGO_FEATURE_*` env
     /// set at build time. The test binary is compiled with the same feature
     /// set (via `cargo test --features X`), so `cfg!(feature = X)` here must

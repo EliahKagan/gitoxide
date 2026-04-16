@@ -303,18 +303,49 @@ jobs:
           cp -- "${out_dirs[0]}/third_party_licenses.txt"  "$ARCHIVE/THIRD-PARTY-LICENSES.txt"
           cp -- "${out_dirs[0]}/third_party_licenses.json" "$ARCHIVE/THIRD-PARTY-LICENSES.json"
 
-          # Sanity-check: a real manifest for even the smallest feature
-          # profile is hundreds of KB; anything under 4 KB is almost
-          # certainly a stub from a failed cargo-metadata run.
+          # Validate the manifest: reject stubs, verify the JSON is
+          # parseable and has the expected feature profile and a plausible
+          # crate count, and confirm no crate is missing license text.
           min_bytes=4096
           for f in "$ARCHIVE"/THIRD-PARTY-LICENSES.*; do
             size=$(wc -c < "$f")
             if (( size < min_bytes )); then
-              printf 'THIRD-PARTY-LICENSES file %s is only %d bytes (minimum %d) — likely a stub manifest.\n' \
+              printf 'THIRD-PARTY-LICENSES file %s is only %d bytes (minimum %d) — likely a stub.\n' \
                 "$f" "$size" "$min_bytes" >&2
               exit 1
             fi
           done
+
+          json="$ARCHIVE/THIRD-PARTY-LICENSES.json"
+          profile=$(jq -r '.feature_profile' "$json")
+          triple=$(jq -r '.target_triple' "$json")
+          count=$(jq '.crates | length' "$json")
+          missing=$(jq '[.crates[] | select(.files | length == 0)] | length' "$json")
+
+          printf 'license manifest: feature_profile=%s target_triple=%s crates=%s missing_text=%s\n' \
+            "$profile" "$triple" "$count" "$missing"
+
+          ok=true
+          if [ "$profile" != "$FEATURE" ]; then
+            printf 'feature_profile mismatch: got %s, expected %s\n' "$profile" "$FEATURE" >&2
+            ok=false
+          fi
+          if [ -z "$triple" ] || [ "$triple" = "null" ]; then
+            printf 'target_triple is empty or null\n' >&2
+            ok=false
+          fi
+          if (( count < 50 )); then
+            printf 'only %d crates — expected at least 50\n' "$count" >&2
+            ok=false
+          fi
+          if (( missing > 0 )); then
+            printf '%d crates have no license text\n' "$missing" >&2
+            jq -r '.crates[] | select(.files | length == 0) | "\(.name) \(.version) spdx=\(.spdx)"' "$json" >&2
+            ok=false
+          fi
+          if [ "$ok" != true ]; then
+            exit 1
+          fi
 
       - name: Build archive (Windows)
         if: matrix.os == 'windows-latest'

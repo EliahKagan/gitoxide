@@ -118,10 +118,7 @@ mod tests {
             .filter(|c| c.files.is_empty())
             .map(|c| format!("{} {} (spdx={:?})", c.name, c.version, c.spdx))
             .collect();
-        assert!(
-            missing.is_empty(),
-            "crates with no attribution text: {missing:?}",
-        );
+        assert!(missing.is_empty(), "crates with no attribution text: {missing:?}",);
     }
 
     /// `build.rs` derives `feature_profile` from the `CARGO_FEATURE_*` env

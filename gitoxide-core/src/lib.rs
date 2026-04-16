@@ -67,6 +67,11 @@ impl FromStr for OutputFormat {
 pub mod commitgraph;
 #[cfg(feature = "corpus")]
 pub mod corpus;
+/// Third-party dependency license manifest types, renderers, and SPDX
+/// fallback table. Gated on `serde` because the manifest is transported
+/// across the build ↔ runtime boundary as JSON.
+#[cfg(feature = "serde")]
+pub mod licenses;
 pub mod net;
 
 #[cfg(feature = "estimate-hours")]

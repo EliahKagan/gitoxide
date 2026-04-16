@@ -1,27 +1,22 @@
-//! Third-party dependency license manifest for the `gix` and `ein` binaries.
+//! Binary-specific plumbing for the third-party dependency license manifest.
 //!
-//! The goal is to ship full license, attribution, copyright, and notice
-//! information for every third-party dependency linked into `gix` and `ein`,
-//! so users and downstream packagers can satisfy the attribution requirements
-//! of every license in the tree without inspecting the source separately.
+//! The data model, renderers, SPDX fallback table, and build-time helpers
+//! live in `gitoxide_core::licenses` — this module only owns the pieces
+//! that are tied to *this* binary: the compressed JSON blob that
+//! `build.rs` embeds via `include_bytes!`, its deserialisation into a
+//! [`Manifest`], and the CLI dispatcher that backs `gix licenses` and
+//! `ein licenses`.
 //!
-//! At build time, `build.rs` will emit a machine-readable manifest (and a
-//! pre-rendered plain-text version) into `OUT_DIR`. Both are embedded in the
-//! binaries via `include_str!` and also copied into release archives. This
-//! module owns the types, the SPDX canonical-text fallback library, and the
-//! rendering functions that turn a manifest into human-readable output.
-//!
-//! At this stage the build-time wiring is not yet in place; only the types,
-//! renderers, and SPDX fallback table exist, exercised by unit tests with
-//! hand-built manifests.
+//! Callers who need the shared types or a `render_*` function should pull
+//! them from `gitoxide_core::licenses::{render, types}` (or via the
+//! convenience re-exports below); this module does not re-publish every
+//! detail of `gitoxide_core::licenses`.
 
-pub mod build_support;
 pub mod cli;
 pub mod embedded;
-pub mod render;
-pub mod spdx_texts;
-pub mod types;
 
 pub use embedded::{json, load, JSON_GZ};
-pub use render::{render_all, render_crate, render_summary};
-pub use types::{CrateLicense, LicenseFile, Manifest};
+// Re-exported so callers inside the `gitoxide` crate can stay on
+// `crate::licenses::{Manifest, CrateLicense, LicenseFile}` without
+// knowing whether the types live here or in `gitoxide-core`.
+pub use gitoxide_core::licenses::{render_all, render_crate, render_summary, CrateLicense, LicenseFile, Manifest};

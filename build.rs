@@ -17,27 +17,32 @@
 //! is emitted so `cargo build` still succeeds for end users. Under CI (`CI=1`)
 //! we fail hard instead — regressions must be caught, not silently swallowed.
 
-// The runtime shares these modules; including them here keeps the producer
-// (build.rs) and consumer (the `gitoxide` library) on the same schema.
-// Modules using `super::types` resolve it to the crate root in both
-// contexts (here the build script's root, in the library `src/licenses/`),
-// so the files are compiled unchanged in either environment. The items the
-// build script doesn't use are allowed without warning — they belong to the
-// runtime side of the shared schema.
+// These modules live in `gitoxide-core` so the runtime (consumed via
+// `gitoxide_core::licenses`) and `build.rs` (the producer) share one
+// source of truth. We include them here with `#[path]` rather than adding
+// `gitoxide-core` as a build-dependency because `gitoxide-core` pulls in
+// the full `gix` stack — compiling that an extra time just to run the
+// build script would be disproportionate.
+//
+// `render.rs` uses `super::types`, which resolves to this build script's
+// crate root (where `mod types;` is declared below), and at runtime
+// resolves to `gitoxide_core::licenses::types`. The files themselves are
+// compiled unchanged in either environment. Items the build script does
+// not use are allowed without warning — they belong to the runtime side.
 #[allow(dead_code)]
-#[path = "src/licenses/types.rs"]
+#[path = "gitoxide-core/src/licenses/types.rs"]
 mod types;
 
 #[allow(dead_code)]
-#[path = "src/licenses/render.rs"]
+#[path = "gitoxide-core/src/licenses/render.rs"]
 mod render;
 
 #[allow(dead_code)]
-#[path = "src/licenses/spdx_texts.rs"]
+#[path = "gitoxide-core/src/licenses/spdx_texts.rs"]
 mod spdx_texts;
 
 #[allow(dead_code)]
-#[path = "src/licenses/build_support.rs"]
+#[path = "gitoxide-core/src/licenses/build_support.rs"]
 mod build_support;
 
 use std::collections::HashSet;
@@ -58,10 +63,10 @@ fn main() {
     // Every source file we include via `#[path]` needs an explicit rerun
     // trigger — Cargo only tracks files it discovered through the normal
     // module tree, and build.rs pulls these in out-of-band.
-    println!("cargo:rerun-if-changed=src/licenses/types.rs");
-    println!("cargo:rerun-if-changed=src/licenses/render.rs");
-    println!("cargo:rerun-if-changed=src/licenses/spdx_texts.rs");
-    println!("cargo:rerun-if-changed=src/licenses/build_support.rs");
+    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/types.rs");
+    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/render.rs");
+    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/spdx_texts.rs");
+    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/build_support.rs");
     // The MIT / Apache-2.0 fallback texts live in repo-root files that
     // `spdx_texts.rs` pulls in with `include_str!`. Changes to them must
     // re-emit the manifest too.

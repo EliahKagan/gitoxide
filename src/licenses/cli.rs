@@ -6,9 +6,10 @@
 use std::io::Write;
 
 use anyhow::{Context, Result};
+use gitoxide_core::licenses::{render, CrateLicense};
 use gitoxide_core::OutputFormat;
 
-use super::{embedded, render, types::CrateLicense};
+use super::embedded;
 
 #[derive(Debug, clap::Parser)]
 #[command(

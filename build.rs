@@ -16,6 +16,13 @@
 //! (e.g. because the registry cache is unavailable), a minimal stub manifest
 //! is emitted so `cargo build` still succeeds for end users. Under CI (`CI=1`)
 //! we fail hard instead — regressions must be caught, not silently swallowed.
+//!
+//! For the rationale behind implementing this pipeline ourselves rather than
+//! driving `cargo-about`, `cargo-bundle-licenses`, or similar from
+//! `build.rs`, see the module-level docs on
+//! [`gitoxide_core::licenses`](../gitoxide-core/src/licenses/mod.rs).
+//! The short version: every user running `cargo install gitoxide` must get
+//! complete attribution without any auxiliary CLI tool installed.
 
 // These modules live in `gitoxide-core` so the runtime (consumed via
 // `gitoxide_core::licenses`) and `build.rs` (the producer) share one

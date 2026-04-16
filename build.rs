@@ -52,7 +52,7 @@ mod spdx_texts;
 #[path = "gitoxide-core/src/licenses/build_support.rs"]
 mod build_support;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -153,14 +153,36 @@ fn collect_manifest() -> Result<Manifest, String> {
     let metadata = cmd.exec().map_err(|e| format!("cargo metadata failed: {e}"))?;
 
     let workspace_members: HashSet<_> = metadata.workspace_members.iter().cloned().collect();
-    let mut third_party: Vec<&cargo_metadata::Package> = metadata
+
+    // Determine which packages are reachable from the `gitoxide` binary's
+    // dependency graph (as opposed to other workspace members' graphs).
+    // This matters because some workspace members (e.g. test crates) are
+    // never linked into gix/ein and shouldn't appear in the manifest.
+    let reachable = reachable_from_root(&metadata, "gitoxide")?;
+
+    let root_pkg = metadata
         .packages
         .iter()
-        .filter(|p| !workspace_members.contains(&p.id) && p.source.is_some())
-        .collect();
-    third_party.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
+        .find(|p| p.name == "gitoxide")
+        .ok_or("gitoxide package not found in metadata")?;
 
-    let crates: Vec<CrateLicense> = third_party.into_iter().map(build_crate_entry).collect();
+    // Collect third-party deps (non-workspace, sourced) as before, PLUS
+    // workspace members whose license or authorship differs from the root
+    // package and that are actually linked into the binary.
+    let mut to_attribute: Vec<&cargo_metadata::Package> = metadata
+        .packages
+        .iter()
+        .filter(|p| {
+            if workspace_members.contains(&p.id) {
+                reachable.contains(&p.id) && needs_separate_attribution(p, root_pkg)
+            } else {
+                p.source.is_some()
+            }
+        })
+        .collect();
+    to_attribute.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
+
+    let crates: Vec<CrateLicense> = to_attribute.into_iter().map(build_crate_entry).collect();
 
     Ok(Manifest {
         crates,
@@ -202,6 +224,72 @@ fn build_crate_entry(p: &cargo_metadata::Package) -> CrateLicense {
         files,
         used_spdx_fallback,
     }
+}
+
+/// BFS from the named root package through the resolve graph, returning
+/// every package ID reachable from it. This lets us distinguish workspace
+/// members that are linked into the binary from those that only exist as
+/// standalone workspace members (e.g. test crates).
+fn reachable_from_root(
+    metadata: &cargo_metadata::Metadata,
+    root_name: &str,
+) -> Result<HashSet<cargo_metadata::PackageId>, String> {
+    let resolve = metadata
+        .resolve
+        .as_ref()
+        .ok_or("cargo metadata produced no resolve graph")?;
+
+    let root_id = metadata
+        .packages
+        .iter()
+        .find(|p| p.name == root_name)
+        .map(|p| &p.id)
+        .ok_or_else(|| format!("package `{root_name}` not found in metadata"))?;
+
+    let deps_of: HashMap<&cargo_metadata::PackageId, Vec<&cargo_metadata::PackageId>> = resolve
+        .nodes
+        .iter()
+        .map(|n| (&n.id, n.deps.iter().map(|d| &d.pkg).collect()))
+        .collect();
+
+    let mut reachable = HashSet::new();
+    let mut queue = VecDeque::new();
+    queue.push_back(root_id.clone());
+    while let Some(id) = queue.pop_front() {
+        if !reachable.insert(id.clone()) {
+            continue;
+        }
+        if let Some(deps) = deps_of.get(&id) {
+            for dep_id in deps {
+                queue.push_back((*dep_id).clone());
+            }
+        }
+    }
+    Ok(reachable)
+}
+
+/// Return `true` if a workspace member's license or authorship differs
+/// from the root package's and so requires its own attribution entry in the
+/// manifest. The comparison normalises SPDX expressions (so `MIT OR
+/// Apache-2.0` and `Apache-2.0 OR MIT` are treated as equivalent) and
+/// compares author sets order-independently.
+fn needs_separate_attribution(pkg: &cargo_metadata::Package, root: &cargo_metadata::Package) -> bool {
+    // Compare normalized SPDX id sets.
+    match (&pkg.license, &root.license) {
+        (Some(pkg_lic), Some(root_lic)) => {
+            let pkg_ids = build_support::parse_spdx_ids(pkg_lic);
+            let root_ids = build_support::parse_spdx_ids(root_lic);
+            if pkg_ids != root_ids {
+                return true;
+            }
+        }
+        (None, None) => {}
+        _ => return true, // one declares a license, the other doesn't
+    }
+    // Compare author sets (order-independent).
+    let pkg_authors: HashSet<&str> = pkg.authors.iter().map(String::as_str).collect();
+    let root_authors: HashSet<&str> = root.authors.iter().map(String::as_str).collect();
+    pkg_authors != root_authors
 }
 
 fn enabled_top_level_features() -> Vec<String> {

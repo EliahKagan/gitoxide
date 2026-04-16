@@ -260,6 +260,10 @@ jobs:
         run: |
           cargo install cross
           echo 'CARGO=cross' >> "$GITHUB_ENV"
+          # Forward CI into the cross container so build.rs hard-fails on
+          # license-manifest generation errors instead of silently emitting
+          # a stub.  cross does not propagate host env vars by default.
+          echo 'CROSS_CONTAINER_OPTS=--env CI=true' >> "$GITHUB_ENV"
 
       - name: Show command used for Cargo
         run: |
@@ -298,6 +302,19 @@ jobs:
           fi
           cp -- "${out_dirs[0]}/third_party_licenses.txt"  "$ARCHIVE/THIRD-PARTY-LICENSES.txt"
           cp -- "${out_dirs[0]}/third_party_licenses.json" "$ARCHIVE/THIRD-PARTY-LICENSES.json"
+
+          # Sanity-check: a real manifest for even the smallest feature
+          # profile is hundreds of KB; anything under 4 KB is almost
+          # certainly a stub from a failed cargo-metadata run.
+          min_bytes=4096
+          for f in "$ARCHIVE"/THIRD-PARTY-LICENSES.*; do
+            size=$(wc -c < "$f")
+            if (( size < min_bytes )); then
+              printf 'THIRD-PARTY-LICENSES file %s is only %d bytes (minimum %d) — likely a stub manifest.\n' \
+                "$f" "$size" "$min_bytes" >&2
+              exit 1
+            fi
+          done
 
       - name: Build archive (Windows)
         if: matrix.os == 'windows-latest'

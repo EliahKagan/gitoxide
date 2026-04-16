@@ -18,11 +18,11 @@
 /// have no way to know the crate's specific copyright holder — callers will
 /// mark the entry so users know the attribution is less precise than if the
 /// crate had shipped its own LICENSE.
-pub const MIT: &str = include_str!("../../LICENSE-MIT");
+pub const MIT: &str = include_str!("../../../LICENSE-MIT");
 
 /// Canonical text of the Apache License, Version 2.0, reused from the
 /// repository root.
-pub const APACHE_2_0: &str = include_str!("../../LICENSE-APACHE");
+pub const APACHE_2_0: &str = include_str!("../../../LICENSE-APACHE");
 
 /// Return the canonical SPDX license text for a single SPDX identifier, or
 /// `None` if we don't (yet) bundle one. The input must be a bare identifier

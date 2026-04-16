@@ -11,13 +11,13 @@
 //!   binary growth on the order of a few hundred KB.
 //! * `third_party_licenses.txt`       — pre-rendered plain text, shipped as
 //!   `THIRD-PARTY-LICENSES.txt` in the release archive. The runtime does not
-//!   embed this; `super::render::render_all` can regenerate byte-identical
-//!   output from a loaded [`Manifest`] whenever `gix licenses --all` or
-//!   `ein licenses --all` is invoked.
+//!   embed this; `gitoxide_core::licenses::render_all` can regenerate
+//!   byte-identical output from a loaded [`Manifest`] whenever
+//!   `gix licenses --all` or `ein licenses --all` is invoked.
 
 use std::io;
 
-use super::types::Manifest;
+use gitoxide_core::licenses::Manifest;
 
 /// Zlib-compressed JSON manifest, embedded at compile time.
 pub const JSON_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/third_party_licenses.json.gz"));
@@ -168,7 +168,7 @@ mod tests {
         // `gix licenses --all` output must equal the archive file verbatim.
         let manifest = load().expect("load manifest");
         let mut rendered = Vec::new();
-        super::super::render::render_all(&mut rendered, &manifest).expect("render_all");
+        gitoxide_core::licenses::render_all(&mut rendered, &manifest).expect("render_all");
 
         let txt_from_out_dir = std::fs::read(concat!(env!("OUT_DIR"), "/third_party_licenses.txt"))
             .expect("archive .txt must exist in OUT_DIR");
@@ -214,7 +214,7 @@ mod tests {
             let Some(expr) = c.spdx.as_deref() else {
                 continue;
             };
-            let ids = super::super::build_support::parse_spdx_ids(expr);
+            let ids = gitoxide_core::licenses::build_support::parse_spdx_ids(expr);
             let intersection: Vec<String> = ids.iter().filter(|id| allow.contains(*id)).cloned().collect();
             if intersection.is_empty() {
                 unsatisfied.push((c.name.clone(), c.version.clone(), ids));

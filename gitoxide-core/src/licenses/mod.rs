@@ -53,15 +53,17 @@
 //!   identifiers and/or authors but not license text, or are insufficiently
 //!   maintained.
 //!
-//! Given those options, writing our own turned out to be the least
-//! surprising path: it is the *only* option that preserves the
-//! zero-external-tooling guarantee for user builds, it is roughly the
-//! same size as the adapter code we'd write to drive `license-retriever`,
-//! and it keeps every decision (what counts as a license file, how we
-//! handle `WITH` exceptions in SPDX expressions, which canonical SPDX
-//! texts we bundle) inspectable in a single crate. The tradeoff is that
-//! we own the correctness of those decisions rather than delegating to a
-//! third-party's heuristics.
+//! In short, none of the established tools can produce complete
+//! attribution across all of gitoxide's build paths today. The CLI-based
+//! ones cannot be used from `build.rs` without imposing an installation
+//! prerequisite on every person who runs `cargo install gitoxide`, the
+//! one library-based option is not yet mature enough for the role, and
+//! the rest do not emit license text at all. Writing the pipeline
+//! ourselves was a last resort, not a preference — it is roughly 200
+//! lines of filesystem scanning and SPDX expression splitting, which is
+//! small but still code we have to maintain. If any of the above tools
+//! gains a stable, widely-adopted build-time API in the future, migrating
+//! to it would be preferable.
 //!
 //! [cargo-about]: https://github.com/EmbarkStudios/cargo-about
 //! [cargo-bundle-licenses]: https://github.com/sstadick/cargo-bundle-licenses

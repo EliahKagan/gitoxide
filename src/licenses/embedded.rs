@@ -121,6 +121,30 @@ mod tests {
         assert!(missing.is_empty(), "crates with no attribution text: {missing:?}",);
     }
 
+    /// The manifest must include both direct and transitive dependencies.
+    /// `anyhow` is a direct dep of the `gitoxide` package; `memchr` is
+    /// only reachable transitively (through `aho-corasick`, `regex`, or
+    /// similar). If either is absent, the resolution or filtering logic
+    /// in `build.rs` has regressed.
+    #[test]
+    fn manifest_includes_direct_and_transitive_deps() {
+        let manifest = load().expect("load manifest");
+        let names: std::collections::BTreeSet<&str> = manifest.crates.iter().map(|c| c.name.as_str()).collect();
+        // Direct dep of gitoxide (listed in Cargo.toml [dependencies]).
+        assert!(
+            names.contains("anyhow"),
+            "direct dep `anyhow` must appear in the manifest",
+        );
+        // Transitive-only dep — not in gitoxide's Cargo.toml but pulled
+        // in through the dep graph. `memchr` is used by multiple crates
+        // (aho-corasick, regex, etc.) and has been in the tree for years,
+        // making it a stable sentinel.
+        assert!(
+            names.contains("memchr"),
+            "transitive dep `memchr` must appear in the manifest",
+        );
+    }
+
     /// `build.rs` derives `feature_profile` from the `CARGO_FEATURE_*` env
     /// set at build time. The test binary is compiled with the same feature
     /// set (via `cargo test --features X`), so `cfg!(feature = X)` here must

@@ -24,14 +24,40 @@
 use std::collections::BTreeSet;
 use std::process::Command;
 
-/// Host triple as reported by the `rustc` this `cargo test` is using.
-fn host_target() -> String {
-    let out = Command::new("rustc").arg("-vV").output().expect("run `rustc -vV`");
-    let text = String::from_utf8(out.stdout).expect("rustc output is UTF-8");
-    match text.lines().find_map(|l| l.strip_prefix("host: ")) {
-        Some(host) => host.trim().to_string(),
-        None => panic!("no `host:` line in rustc -vV output:\n{text}"),
-    }
+/// Target triple the built `gix` binary was compiled for, as self-reported
+/// by its embedded manifest (`build.rs` populates this from the `TARGET`
+/// env var cargo sets for build scripts).
+///
+/// Asking the binary itself — rather than spawning `rustc -vV` — avoids
+/// two failure modes: (1) `rustc` on `PATH` may not be the compiler the
+/// current cargo invocation resolved, and (2) the `RUSTC` env var
+/// cargo exports to build scripts is *not* exported to integration
+/// tests, so there is no reliable way to look it up here. The binary's
+/// embedded `target_triple` is the authoritative answer because it was
+/// recorded at build time by the same cargo run that produced the
+/// binary under test.
+fn target_triple_of_gix() -> String {
+    let gix = env!("CARGO_BIN_EXE_gix");
+    let output = Command::new(gix)
+        .args(["licenses", "--format", "json"])
+        .output()
+        .expect("run `gix licenses --format json`");
+    assert!(
+        output.status.success(),
+        "`gix licenses --format json` failed ({}):\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let data: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse `gix licenses` JSON");
+    let triple = data["target_triple"]
+        .as_str()
+        .expect("manifest has a target_triple string")
+        .to_string();
+    assert!(
+        !triple.is_empty(),
+        "gix binary reports an empty target_triple; build.rs's TARGET passthrough may have regressed",
+    );
+    triple
 }
 
 /// The top-level feature-profile flags this test binary was compiled with.
@@ -281,7 +307,7 @@ fn gix_manifest_crate_names() -> BTreeSet<String> {
 #[test]
 fn third_party_crates_match_cargo_metadata() {
     let features = enabled_feature_profiles();
-    let host = host_target();
+    let host = target_triple_of_gix();
     let (workspace_names, from_cargo) = cargo_metadata_sets(&features, &host);
     let from_binary = gix_manifest_crate_names();
 

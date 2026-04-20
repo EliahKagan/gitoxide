@@ -241,13 +241,13 @@ fn windows_target_includes_winapi_and_windows_family() {
 fn non_windows_targets_do_not_include_winapi_or_windows_family() {
     for platform in [LINUX_TARGET, APPLE_TARGET] {
         let crates = third_party_crate_names(&["max-pure"], platform);
-        assert!(!crates.contains("winapi"), "{platform} must not include `winapi`",);
+        assert!(!crates.contains("winapi"), "{platform} must not include `winapi`");
         assert!(
             !crates.contains("winapi-util"),
             "{platform} must not include `winapi-util`",
         );
         let has_windows_family = crates.iter().any(|n| n == "windows" || n.starts_with("windows-"));
-        assert!(!has_windows_family, "{platform} must not include any `windows*` crate",);
+        assert!(!has_windows_family, "{platform} must not include any `windows*` crate");
     }
 }
 
@@ -273,7 +273,7 @@ fn non_apple_targets_do_not_include_security_framework() {
     for platform in [LINUX_TARGET, WINDOWS_TARGET] {
         let crates = third_party_crate_names(&["max-pure"], platform);
         for forbidden in ["security-framework", "security-framework-sys"] {
-            assert!(!crates.contains(forbidden), "{platform} must not include `{forbidden}`",);
+            assert!(!crates.contains(forbidden), "{platform} must not include `{forbidden}`");
         }
     }
 }

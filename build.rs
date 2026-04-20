@@ -280,13 +280,29 @@ fn build_crate_entry(p: &cargo_metadata::Package, is_workspace_member: bool) -> 
 /// (Apache-2.0 OR MIT, no linking exception) requires attribution in
 /// distributed binaries. We include the canonical MIT and Apache-2.0
 /// license texts from the repo root, matching the stdlib's own licensing.
-/// The version is taken from `rustc --version`.
+/// The version is taken from `rustc --version`, using the compiler
+/// Cargo resolved for this build (via the `RUSTC` env var it sets for
+/// build scripts) — not a `rustc` that happens to be first on `PATH`,
+/// which could easily be a different toolchain from the one compiling
+/// everything else.
 ///
 /// For the full per-component breakdown (hashbrown, libc, unicode data,
 /// etc.) the Rust toolchain ships a COPYRIGHT-library.html in the
 /// sysroot; we don't parse that here but interested users can consult it.
 fn stdlib_entry() -> CrateLicense {
-    let version = Command::new(if cfg!(windows) { "rustc.exe" } else { "rustc" })
+    // Cargo exports `RUSTC` to every build script, pointing at the
+    // compiler it resolved. Fall back to the bare name only in
+    // exotic environments that run build scripts without cargo having
+    // set it — the `"unknown"` version placeholder below handles any
+    // residual failure gracefully.
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| {
+        if cfg!(windows) {
+            "rustc.exe".into()
+        } else {
+            "rustc".into()
+        }
+    });
+    let version = Command::new(rustc)
         .arg("--version")
         .output()
         .ok()

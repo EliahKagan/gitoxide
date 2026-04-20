@@ -252,6 +252,31 @@ mod tests {
         );
     }
 
+    /// Dev-only workspace and third-party crates must never appear in
+    /// the manifest, regardless of what license or authorship they
+    /// declare.
+    ///
+    /// * `gix-testtools` lives in `tests/tools/` and is referenced only
+    ///   from `[dev-dependencies]` sections across the workspace. Its
+    ///   own metadata happens to match the root today (same license,
+    ///   same author), but the test asserts absence structurally so a
+    ///   future metadata change cannot silently surface it.
+    /// * `mockito` and `serial_test` are external dev-only deps that
+    ///   transit through `[dev-dependencies]` of workspace members —
+    ///   never through a `normal` or `build` edge — and so must also
+    ///   be absent.
+    #[test]
+    fn dev_only_crates_are_not_in_manifest() {
+        let manifest = load().expect("load manifest");
+        let names: std::collections::BTreeSet<&str> = manifest.crates.iter().map(|c| c.name.as_str()).collect();
+        for dev_only in ["gix-testtools", "mockito", "serial_test"] {
+            assert!(
+                !names.contains(dev_only),
+                "dev-only crate `{dev_only}` must not appear in the binary's license manifest",
+            );
+        }
+    }
+
     /// `build.rs` derives `feature_profile` from the `CARGO_FEATURE_*` env
     /// set at build time. The test binary is compiled with the same feature
     /// set (via `cargo test --features X`), so `cfg!(feature = X)` here must

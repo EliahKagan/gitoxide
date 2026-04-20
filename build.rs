@@ -166,21 +166,32 @@ fn collect_manifest() -> Result<Manifest, String> {
         .find(|p| p.name == "gitoxide")
         .ok_or("gitoxide package not found in metadata")?;
 
-    // Collect third-party deps (non-workspace, sourced) as before, PLUS
-    // workspace members whose license or authorship differs from the root
-    // package and that are actually linked into the binary.
+    // Include a package iff it is actually reachable from the `gitoxide`
+    // binary via non-dev edges AND either:
+    //
+    //   - it is a third-party (non-workspace, sourced) dep, or
+    //   - it is a workspace member whose license or authorship differs
+    //     from the root `gitoxide` package's.
+    //
+    // The reachability gate ensures dev-only transitive crates (e.g.
+    // `gix-testtools`, which is a `[dev-dependencies]` of most `gix-*`
+    // crates but never linked into the binary) never appear regardless of
+    // their attribution. Without it, a future change to such a crate's
+    // license or authors would silently surface it in the manifest.
     let mut to_attribute: Vec<&cargo_metadata::Package> = metadata
         .packages
         .iter()
         .filter(|p| {
+            if !reachable.contains(&p.id) {
+                return false;
+            }
             if workspace_members.contains(&p.id) {
-                reachable.contains(&p.id)
-                    && build_support::needs_separate_attribution(
-                        p.license.as_deref(),
-                        &p.authors,
-                        root_pkg.license.as_deref(),
-                        &root_pkg.authors,
-                    )
+                build_support::needs_separate_attribution(
+                    p.license.as_deref(),
+                    &p.authors,
+                    root_pkg.license.as_deref(),
+                    &root_pkg.authors,
+                )
             } else {
                 p.source.is_some()
             }
@@ -233,9 +244,16 @@ fn build_crate_entry(p: &cargo_metadata::Package) -> CrateLicense {
 }
 
 /// BFS from the named root package through the resolve graph, returning
-/// every package ID reachable from it. This lets us distinguish workspace
-/// members that are linked into the binary from those that only exist as
-/// standalone workspace members (e.g. test crates).
+/// every package ID reachable from it via `normal` or `build` dep edges.
+/// Dev-dep edges are excluded: a crate that is only reachable through
+/// `[dev-dependencies]` somewhere in the tree (e.g. `gix-testtools`) is
+/// used for testing other crates and does not end up in the `gix` / `ein`
+/// binary, so it does not need its license attributed here.
+///
+/// Build-dep edges are included: a build-dep's code runs at compile time
+/// and its output is absorbed into its parent crate's library artefact,
+/// which is then linked into the binary. Attributing it is at worst
+/// harmless and at best correct for transitive-generated-code cases.
 fn reachable_from_root(
     metadata: &cargo_metadata::Metadata,
     root_name: &str,
@@ -252,10 +270,29 @@ fn reachable_from_root(
         .map(|p| &p.id)
         .ok_or_else(|| format!("package `{root_name}` not found in metadata"))?;
 
+    // Follow only edges that are at least partly `normal` or `build`.
+    // If every `dep_kinds` entry is `Development`, the edge leads to a
+    // dev-only dep and we skip it.
     let deps_of: HashMap<&cargo_metadata::PackageId, Vec<&cargo_metadata::PackageId>> = resolve
         .nodes
         .iter()
-        .map(|n| (&n.id, n.deps.iter().map(|d| &d.pkg).collect()))
+        .map(|n| {
+            let linked_deps: Vec<&cargo_metadata::PackageId> = n
+                .deps
+                .iter()
+                .filter(|d| {
+                    // Older cargo_metadata versions did not populate
+                    // `dep_kinds`; treat an empty list as "normal" for
+                    // back-compat so we don't silently drop edges.
+                    d.dep_kinds.is_empty()
+                        || d.dep_kinds
+                            .iter()
+                            .any(|dk| !matches!(dk.kind, cargo_metadata::DependencyKind::Development))
+                })
+                .map(|d| &d.pkg)
+                .collect();
+            (&n.id, linked_deps)
+        })
         .collect();
 
     let mut reachable = HashSet::new();

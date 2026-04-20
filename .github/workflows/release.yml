@@ -321,9 +321,26 @@ jobs:
           triple=$(jq -r '.target_triple' "$json")
           count=$(jq '.crates | length' "$json")
           missing=$(jq '[.crates[] | select(.files | length == 0)] | length' "$json")
+          same_attrib_count=$(jq '.workspace_members_same_attribution | length' "$json")
+          overlap_count=$(jq '[
+              .workspace_members_same_attribution[] as $n
+              | select([.crates[].name] | index($n))
+            ] | length' "$json")
+          root_in_same=$(jq '
+              .workspace_members_same_attribution
+              | index("gitoxide")
+              | if . == null then 0 else 1 end' "$json")
+          # Dev-only crates (gix-testtools / mockito / serial_test) must
+          # appear in neither list. Count offenders across both.
+          dev_leak_count=$(jq '
+              [ "gix-testtools", "gix-config-tests", "gix-status-tests",
+                "mockito", "serial_test" ] as $dev
+              | [.crates[].name] + .workspace_members_same_attribution
+              | map(select(IN($dev[])))
+              | length' "$json")
 
-          printf 'license manifest: feature_profile=%s target_triple=%s crates=%s missing_text=%s\n' \
-            "$profile" "$triple" "$count" "$missing"
+          printf 'license manifest: feature_profile=%s target_triple=%s crates=%s missing_text=%s same_attribution=%s\n' \
+            "$profile" "$triple" "$count" "$missing" "$same_attrib_count"
 
           ok=true
           if [ "$profile" != "$FEATURE" ]; then
@@ -341,6 +358,46 @@ jobs:
           if (( missing > 0 )); then
             printf '%d crates have no license text\n' "$missing" >&2
             jq -r '.crates[] | select(.files | length == 0) | "\(.name) \(.version) spdx=\(.spdx)"' "$json" >&2
+            ok=false
+          fi
+          # Every reachable workspace member must appear in one of the
+          # two lists. The same-attribution list should be non-trivial
+          # for any real build — gitoxide has dozens of gix-* crates
+          # that share the root's license and authorship.
+          if (( same_attrib_count < 10 )); then
+            printf 'implausibly few same-attribution workspace members (%d) — \
+                    the names-only listing may be broken\n' "$same_attrib_count" >&2
+            ok=false
+          fi
+          # The same-attribution list must NOT include the root itself.
+          if (( root_in_same != 0 )); then
+            printf 'gitoxide (the root) must not appear in \
+                    workspace_members_same_attribution\n' >&2
+            ok=false
+          fi
+          # A name must appear in at most one of `crates` and
+          # `workspace_members_same_attribution`, never in both. Overlap
+          # would mean the partitioning logic in build.rs regressed.
+          if (( overlap_count > 0 )); then
+            printf '%d name(s) appear in BOTH crates[] and \
+                    workspace_members_same_attribution:\n' "$overlap_count" >&2
+            jq -r '
+                .workspace_members_same_attribution[] as $n
+                | select([.crates[].name] | index($n))
+                | $n' "$json" >&2
+            ok=false
+          fi
+          # Dev-only workspace crates (gix-testtools, gix-config-tests,
+          # etc.) must never surface in either list — they are not linked
+          # into the binary, so attributing them would be misleading.
+          if (( dev_leak_count > 0 )); then
+            printf '%d dev-only crate(s) leaked into the manifest:\n' \
+                    "$dev_leak_count" >&2
+            jq -r '
+                [ "gix-testtools", "gix-config-tests", "gix-status-tests",
+                  "mockito", "serial_test" ] as $dev
+                | (.crates[] | .name) , (.workspace_members_same_attribution[])
+                | select(IN($dev[]))' "$json" >&2
             ok=false
           fi
           if [ "$ok" != true ]; then

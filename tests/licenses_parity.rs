@@ -107,10 +107,16 @@ fn cargo_metadata_sets(features: &[&str], platform: &str) -> (BTreeSet<String>, 
 }
 
 /// BFS from the `gitoxide` package through `resolve.nodes`, following
-/// every dep edge whose `dep_kinds` includes at least one kind that is
-/// not `"dev"`. Independently computed relative to `build.rs` — purposely
-/// operates on the raw JSON so we don't share a `cargo_metadata` struct
-/// layout and thereby rule out a whole class of coordinated bugs.
+/// every dep edge that is (a) non-dev and (b) actually activated by the
+/// owner's resolved feature set. Independent from `build.rs` — operates
+/// on raw JSON to rule out a whole class of coordinated bugs.
+///
+/// Feature activation is evaluated against cargo's edition-2021 semantics
+/// for the activator strings in `packages[owner].features`: `"dep:foo"`,
+/// `"foo"`, and `"foo/bar"` all activate optional dep `foo`; `"foo?/bar"`
+/// is weak and by itself does not. In addition, cargo's implicit "feature
+/// named after the dep" is honoured: if the dep's alias name is in the
+/// owner's enabled-feature set, the dep is active.
 fn reachable_from_gitoxide_via_non_dev(md: &serde_json::Value) -> BTreeSet<String> {
     use std::collections::{HashMap, VecDeque};
 
@@ -123,25 +129,71 @@ fn reachable_from_gitoxide_via_non_dev(md: &serde_json::Value) -> BTreeSet<Strin
         .expect("gitoxide package in metadata")
         .to_string();
 
+    // Index packages by ID for quick lookup of per-package info.
+    let packages_by_id: HashMap<&str, &serde_json::Value> = md["packages"]
+        .as_array()
+        .expect("packages array")
+        .iter()
+        .filter_map(|p| p["id"].as_str().map(|id| (id, p)))
+        .collect();
+
+    // Index resolved features by ID.
+    let features_by_id: HashMap<&str, BTreeSet<&str>> = md["resolve"]["nodes"]
+        .as_array()
+        .expect("resolve.nodes array")
+        .iter()
+        .filter_map(|n| {
+            let id = n["id"].as_str()?;
+            let features: BTreeSet<&str> = n["features"]
+                .as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+            Some((id, features))
+        })
+        .collect();
+
     let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
     for node in md["resolve"]["nodes"].as_array().expect("resolve.nodes array") {
-        let owner = node["id"].as_str().unwrap_or("").to_string();
+        let owner_id = node["id"].as_str().unwrap_or("");
+        let owner_pkg = packages_by_id.get(owner_id).copied();
+        let owner_features = features_by_id.get(owner_id);
         let mut linked = Vec::new();
         for dep in node["deps"].as_array().unwrap_or(&Vec::new()) {
-            let Some(target) = dep["pkg"].as_str() else { continue };
+            let Some(target_id) = dep["pkg"].as_str() else { continue };
             let dep_kinds = dep["dep_kinds"].as_array();
             let has_non_dev_edge = match dep_kinds {
-                // Empty or absent dep_kinds is treated as a single normal
-                // edge (the same back-compat rule `build.rs` applies).
                 None => true,
                 Some(kinds) if kinds.is_empty() => true,
                 Some(kinds) => kinds.iter().any(|dk| dk["kind"].as_str() != Some("dev")),
             };
-            if has_non_dev_edge {
-                linked.push(target.to_string());
+            if !has_non_dev_edge {
+                continue;
             }
+            // Feature-aware optional-dep filter. If the owner's manifest
+            // entry for this dep says `optional = true`, require that
+            // some activator in the owner's enabled features references
+            // the dep by alias or package name.
+            let dep_alias = dep["name"].as_str().unwrap_or("");
+            let raw_dep_name = packages_by_id
+                .get(target_id)
+                .and_then(|p| p["name"].as_str())
+                .unwrap_or("");
+            let is_optional = owner_pkg
+                .and_then(|p| p["dependencies"].as_array())
+                .is_some_and(|deps| {
+                    deps.iter().any(|md_dep| {
+                        let opt = md_dep["optional"].as_bool().unwrap_or(false);
+                        let name = md_dep["name"].as_str().unwrap_or("");
+                        let rename = md_dep["rename"].as_str();
+                        opt && name == raw_dep_name && (rename.is_none() || rename == Some(dep_alias))
+                    })
+                });
+            if is_optional && !optional_dep_activated_by_features(owner_pkg, owner_features, dep_alias, raw_dep_name) {
+                continue;
+            }
+            linked.push(target_id.to_string());
         }
-        adjacency.insert(owner, linked);
+        adjacency.insert(owner_id.to_string(), linked);
     }
 
     let mut reachable = BTreeSet::new();
@@ -158,6 +210,50 @@ fn reachable_from_gitoxide_via_non_dev(md: &serde_json::Value) -> BTreeSet<Strin
         }
     }
     reachable
+}
+
+fn optional_dep_activated_by_features(
+    owner_pkg: Option<&serde_json::Value>,
+    owner_features: Option<&BTreeSet<&str>>,
+    alias_name: &str,
+    raw_dep_name: &str,
+) -> bool {
+    let Some(owner_pkg) = owner_pkg else { return false };
+    let Some(owner_features) = owner_features else {
+        return false;
+    };
+    if owner_features.contains(alias_name) {
+        return true;
+    }
+    let Some(feat_map) = owner_pkg["features"].as_object() else {
+        return false;
+    };
+    for f in owner_features {
+        let Some(activators) = feat_map.get(*f).and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for a in activators {
+            let Some(s) = a.as_str() else { continue };
+            if activator_enables(s, alias_name, raw_dep_name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn activator_enables(activator: &str, alias_name: &str, raw_dep_name: &str) -> bool {
+    let matches = |n: &str| n == alias_name || n == raw_dep_name;
+    if let Some(rest) = activator.strip_prefix("dep:") {
+        return matches(rest);
+    }
+    if activator.contains("?/") {
+        return false;
+    }
+    if let Some((name, _)) = activator.split_once('/') {
+        return matches(name);
+    }
+    matches(activator)
 }
 
 /// Crate names the built `gix` binary embeds.

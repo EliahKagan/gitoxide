@@ -99,11 +99,29 @@ fn emit_full_json(out: &mut dyn Write) -> Result<()> {
 
 fn emit_single_crate_json(out: &mut dyn Write, name: &str) -> Result<()> {
     let manifest = embedded::load().context("decoding embedded license manifest")?;
-    let crate_entry: &CrateLicense = manifest
-        .find(name)
-        .with_context(|| format!("no dependency named `{name}` in the manifest"))?;
-    serde_json::to_writer(&mut *out, crate_entry)
-        .with_context(|| format!("encoding attribution for `{name}` as JSON"))?;
-    writeln!(out)?;
-    Ok(())
+    if let Some(crate_entry) = manifest.find(name) {
+        let crate_entry: &CrateLicense = crate_entry;
+        serde_json::to_writer(&mut *out, crate_entry)
+            .with_context(|| format!("encoding attribution for `{name}` as JSON"))?;
+        writeln!(out)?;
+        return Ok(());
+    }
+    if manifest.workspace_members_same_attribution.iter().any(|n| n == name) {
+        // Same-attribution workspace members aren't carried as full
+        // `CrateLicense` entries — their license is `gitoxide`'s own.
+        // Emit a compact JSON note so machine consumers can tell this
+        // case apart from "not found".
+        let note = serde_json::json!({
+            "name": name,
+            "kind": "workspace-member-same-attribution",
+            "note": "Workspace member with attribution identical to `gitoxide`. Refer to \
+                     LICENSE-MIT and LICENSE-APACHE at the root of the gitoxide source tree \
+                     or release archive.",
+        });
+        serde_json::to_writer(&mut *out, &note)
+            .with_context(|| format!("encoding same-attribution entry for `{name}` as JSON"))?;
+        writeln!(out)?;
+        return Ok(());
+    }
+    anyhow::bail!("no dependency named `{name}` in the manifest")
 }

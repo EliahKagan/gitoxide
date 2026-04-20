@@ -32,7 +32,31 @@ fn write_header(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Resul
     writeln!(w, "Target triple:   {}", manifest.target_triple)?;
     writeln!(w, "Generated at:    {}", manifest.generated_at)?;
     writeln!(w, "Dependency count: {}", manifest.crates.len())?;
+    writeln!(
+        w,
+        "Workspace members with gitoxide-equivalent attribution: {}",
+        manifest.workspace_members_same_attribution.len(),
+    )?;
     writeln!(w)?;
+    Ok(())
+}
+
+/// Write the section listing workspace members whose attribution matches
+/// the root package's, if any. The caller decides where to place this —
+/// at the end of [`render_summary`] and [`render_all`] output.
+fn write_same_attribution_workspace_section(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
+    if manifest.workspace_members_same_attribution.is_empty() {
+        return Ok(());
+    }
+    writeln!(w)?;
+    writeln!(w, "Workspace members with the same license and authorship as gitoxide")?;
+    writeln!(
+        w,
+        "(covered by the repository's LICENSE-MIT / LICENSE-APACHE at the root):"
+    )?;
+    for name in &manifest.workspace_members_same_attribution {
+        writeln!(w, "  {name}")?;
+    }
     Ok(())
 }
 
@@ -95,6 +119,7 @@ pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io:
         "Use `gix licenses <CRATE>` or `ein licenses <CRATE>` for the full attribution of a single crate,"
     )?;
     writeln!(w, "or pass `--all` to print every license and notice in full.")?;
+    write_same_attribution_workspace_section(w, manifest)?;
     Ok(())
 }
 
@@ -147,17 +172,32 @@ fn write_crate(w: &mut (impl Write + ?Sized), c: &CrateLicense) -> io::Result<()
 
 /// Render one crate's full attribution, looked up by name.
 ///
-/// Returns an error of kind [`io::ErrorKind::NotFound`] if the crate is not
-/// present in the manifest. This keeps the surface compatible with other I/O
-/// errors a caller's sink may produce and lets a single `?` handle both.
+/// If the named crate has a full entry in the manifest, print it. If the
+/// name matches a workspace member whose attribution is identical to the
+/// root `gitoxide` package's, print a short note pointing at the root's
+/// license files rather than duplicating them. Otherwise return an error
+/// of kind [`io::ErrorKind::NotFound`].
 pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &str) -> io::Result<()> {
-    let Some(c) = manifest.find(name) else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("no dependency named {name:?} in the manifest"),
-        ));
-    };
-    write_crate(w, c)
+    if let Some(c) = manifest.find(name) {
+        return write_crate(w, c);
+    }
+    if manifest.workspace_members_same_attribution.iter().any(|n| n == name) {
+        writeln!(w, "{name}")?;
+        writeln!(w, "Workspace member with attribution identical to `gitoxide`.")?;
+        writeln!(
+            w,
+            "License, copyright, and attribution are covered by the LICENSE-MIT and",
+        )?;
+        writeln!(
+            w,
+            "LICENSE-APACHE files at the root of the gitoxide source tree and release archive.",
+        )?;
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("no dependency named {name:?} in the manifest"),
+    ))
 }
 
 /// Render the full attribution for every crate, separated by dividers.
@@ -173,6 +213,7 @@ pub fn render_all(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Res
         }
         write_crate(w, c)?;
     }
+    write_same_attribution_workspace_section(w, manifest)?;
     Ok(())
 }
 
@@ -208,6 +249,7 @@ mod tests {
                     used_spdx_fallback: false,
                 },
             ],
+            workspace_members_same_attribution: vec!["gix-alpha".into(), "gix-beta".into()],
             generated_at: "2026-04-15T00:00:00Z".into(),
             feature_profile: Some("max".into()),
             target_triple: "aarch64-apple-darwin".into(),
@@ -290,6 +332,7 @@ mod tests {
     fn render_all_on_empty_manifest_has_just_header() {
         let manifest = Manifest {
             crates: vec![],
+            workspace_members_same_attribution: vec![],
             generated_at: "t".into(),
             feature_profile: None,
             target_triple: "x86_64-unknown-linux-gnu".into(),
@@ -297,5 +340,69 @@ mod tests {
         let out = render_to_string(&manifest, render_all);
         assert!(out.contains("Dependency count: 0"));
         assert!(!out.contains(CRATE_DIVIDER));
+    }
+
+    #[test]
+    fn summary_lists_same_attribution_workspace_members() {
+        let out = render_to_string(&sample_manifest(), render_summary);
+        assert!(
+            out.contains("Workspace members with the same license and authorship as gitoxide"),
+            "summary should introduce the same-attribution section:\n{out}",
+        );
+        assert!(out.contains("gix-alpha"), "summary should list gix-alpha:\n{out}");
+        assert!(out.contains("gix-beta"), "summary should list gix-beta:\n{out}");
+    }
+
+    #[test]
+    fn render_all_lists_same_attribution_workspace_members() {
+        let out = render_to_string(&sample_manifest(), render_all);
+        assert!(
+            out.contains("Workspace members with the same license and authorship as gitoxide"),
+            "render_all should include the same-attribution section",
+        );
+        assert!(out.contains("gix-alpha"));
+        assert!(out.contains("gix-beta"));
+    }
+
+    #[test]
+    fn header_reports_same_attribution_workspace_count() {
+        let out = render_to_string(&sample_manifest(), render_summary);
+        assert!(
+            out.contains("Workspace members with gitoxide-equivalent attribution: 2"),
+            "header must report the count:\n{out}",
+        );
+    }
+
+    #[test]
+    fn same_attribution_section_absent_when_list_is_empty() {
+        let mut manifest = sample_manifest();
+        manifest.workspace_members_same_attribution.clear();
+        let out = render_to_string(&manifest, render_summary);
+        assert!(!out.contains("Workspace members with the same license"));
+        assert!(out.contains("Workspace members with gitoxide-equivalent attribution: 0"));
+    }
+
+    #[test]
+    fn render_crate_finds_same_attribution_workspace_member() {
+        let manifest = sample_manifest();
+        let mut buf = Vec::new();
+        render_crate(&mut buf, &manifest, "gix-alpha").expect("same-attribution ws member must render");
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.contains("gix-alpha"), "output should name the crate");
+        assert!(
+            s.contains("identical to `gitoxide`"),
+            "output should note the identical-attribution case:\n{s}",
+        );
+        assert!(
+            s.contains("LICENSE-MIT") && s.contains("LICENSE-APACHE"),
+            "output should point at the root license files:\n{s}",
+        );
+    }
+
+    #[test]
+    fn render_crate_still_not_found_for_unknown_name() {
+        let manifest = sample_manifest();
+        let err = render_crate(&mut Vec::new(), &manifest, "nonexistent-xyz").unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
     }
 }

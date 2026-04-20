@@ -135,6 +135,7 @@ mod tests {
                 files: vec![], // deliberately empty
                 used_spdx_fallback: false,
             }],
+            workspace_members_same_attribution: Vec::new(),
             generated_at: "test".into(),
             feature_profile: None,
             target_triple: "test".into(),

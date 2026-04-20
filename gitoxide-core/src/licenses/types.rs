@@ -50,11 +50,30 @@ pub struct CrateLicense {
 }
 
 /// The full manifest: one entry per third-party dependency linked into the
-/// build that produced this binary, plus metadata about that build.
+/// build that produced this binary, plus the workspace members the root
+/// package's `LICENSE-*` files already cover, plus metadata about that build.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
-    /// Third-party dependencies, sorted by name then version.
+    /// Full attribution entries: every third-party dep, every workspace
+    /// member whose license or authorship differs from the root (so it
+    /// needs its own entry), and any synthetic entry the build script
+    /// injects (e.g. the Rust standard library on builds that attribute
+    /// it). Sorted by name then version.
     pub crates: Vec<CrateLicense>,
+    /// Workspace members that *are* linked into the binary but whose
+    /// attribution is identical to the root `gitoxide` package's — same
+    /// license, same authors. Listed by name only because repeating
+    /// `gitoxide`'s own LICENSE-MIT / LICENSE-APACHE for each one would
+    /// bloat the manifest without adding information. Sorted
+    /// alphabetically.
+    ///
+    /// The listing exists so readers can tell at a glance which workspace
+    /// crates are part of the shipped binary; without it, the absence of
+    /// e.g. `gix-ref` would be indistinguishable from the presence of
+    /// e.g. `gix-imara-diff`, obscuring the recognizability of the "this
+    /// workspace crate has separate attribution" case.
+    #[serde(default)]
+    pub workspace_members_same_attribution: Vec<String>,
     /// Stamp identifying when the manifest was generated.
     ///
     /// Currently a `"unix=SECONDS"` string; may become ISO-8601 in a later
@@ -121,11 +140,27 @@ mod tests {
     fn manifest_find_returns_match() {
         let manifest = Manifest {
             crates: vec![sample_crate()],
+            workspace_members_same_attribution: Vec::new(),
             generated_at: "2026-04-15T00:00:00Z".into(),
             feature_profile: Some("max".into()),
             target_triple: "aarch64-apple-darwin".into(),
         };
         assert_eq!(manifest.find("sample").map(|c| c.version.as_str()), Some("1.2.3"));
         assert!(manifest.find("missing").is_none());
+    }
+
+    #[test]
+    fn workspace_members_same_attribution_defaults_to_empty_on_deserialize() {
+        // Older builds without the field must still deserialize so
+        // `load()` continues to work for embedded blobs captured before
+        // the field was added.
+        let without_field = r#"{
+          "crates": [],
+          "generated_at": "t",
+          "feature_profile": null,
+          "target_triple": "x86_64-unknown-linux-gnu"
+        }"#;
+        let m: Manifest = serde_json::from_str(without_field).expect("deserialize without the field");
+        assert!(m.workspace_members_same_attribution.is_empty());
     }
 }

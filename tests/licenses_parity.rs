@@ -51,8 +51,18 @@ fn enabled_feature_profiles() -> Vec<&'static str> {
     features
 }
 
-/// Run `cargo metadata` and return the names of workspace members and
-/// third-party (non-workspace, sourced) crates as two separate sets.
+/// Run `cargo metadata` and return two sets of crate names, restricted to
+/// packages that are reachable from the `gitoxide` package via `normal` or
+/// `build` dep edges (dev-dep edges are excluded):
+///
+///   * workspace members reachable via non-dev edges, and
+///   * third-party (non-workspace, sourced) crates reachable via non-dev
+///     edges.
+///
+/// This is an independent implementation of the same reachability filter
+/// `build.rs` applies when building the manifest. The two code paths share
+/// no functions; if either has a bug, the two sets diverge and the parity
+/// assertion below surfaces it.
 fn cargo_metadata_sets(features: &[&str], platform: &str) -> (BTreeSet<String>, BTreeSet<String>) {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut cmd = Command::new(cargo);
@@ -77,18 +87,77 @@ fn cargo_metadata_sets(features: &[&str], platform: &str) -> (BTreeSet<String>, 
         .filter_map(|v| v.as_str().map(String::from))
         .collect();
 
+    let reachable = reachable_from_gitoxide_via_non_dev(&metadata);
+
     let mut workspace_names = BTreeSet::new();
     let mut third_party_names = BTreeSet::new();
     for p in metadata["packages"].as_array().expect("packages is an array") {
-        let id = p["id"].as_str().unwrap_or("");
+        let id = p["id"].as_str().unwrap_or("").to_string();
+        if !reachable.contains(&id) {
+            continue;
+        }
         let name = p["name"].as_str().unwrap_or("").to_string();
-        if workspace_member_ids.contains(id) {
+        if workspace_member_ids.contains(&id) {
             workspace_names.insert(name);
         } else if !p["source"].is_null() {
             third_party_names.insert(name);
         }
     }
     (workspace_names, third_party_names)
+}
+
+/// BFS from the `gitoxide` package through `resolve.nodes`, following
+/// every dep edge whose `dep_kinds` includes at least one kind that is
+/// not `"dev"`. Independently computed relative to `build.rs` — purposely
+/// operates on the raw JSON so we don't share a `cargo_metadata` struct
+/// layout and thereby rule out a whole class of coordinated bugs.
+fn reachable_from_gitoxide_via_non_dev(md: &serde_json::Value) -> BTreeSet<String> {
+    use std::collections::{HashMap, VecDeque};
+
+    let root_id = md["packages"]
+        .as_array()
+        .expect("packages array")
+        .iter()
+        .find(|p| p["name"].as_str() == Some("gitoxide"))
+        .and_then(|p| p["id"].as_str())
+        .expect("gitoxide package in metadata")
+        .to_string();
+
+    let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+    for node in md["resolve"]["nodes"].as_array().expect("resolve.nodes array") {
+        let owner = node["id"].as_str().unwrap_or("").to_string();
+        let mut linked = Vec::new();
+        for dep in node["deps"].as_array().unwrap_or(&Vec::new()) {
+            let Some(target) = dep["pkg"].as_str() else { continue };
+            let dep_kinds = dep["dep_kinds"].as_array();
+            let has_non_dev_edge = match dep_kinds {
+                // Empty or absent dep_kinds is treated as a single normal
+                // edge (the same back-compat rule `build.rs` applies).
+                None => true,
+                Some(kinds) if kinds.is_empty() => true,
+                Some(kinds) => kinds.iter().any(|dk| dk["kind"].as_str() != Some("dev")),
+            };
+            if has_non_dev_edge {
+                linked.push(target.to_string());
+            }
+        }
+        adjacency.insert(owner, linked);
+    }
+
+    let mut reachable = BTreeSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    queue.push_back(root_id);
+    while let Some(id) = queue.pop_front() {
+        if !reachable.insert(id.clone()) {
+            continue;
+        }
+        if let Some(neighbours) = adjacency.get(&id) {
+            for n in neighbours {
+                queue.push_back(n.clone());
+            }
+        }
+    }
+    reachable
 }
 
 /// Crate names the built `gix` binary embeds.

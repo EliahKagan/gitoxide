@@ -174,7 +174,13 @@ fn collect_manifest() -> Result<Manifest, String> {
         .iter()
         .filter(|p| {
             if workspace_members.contains(&p.id) {
-                reachable.contains(&p.id) && needs_separate_attribution(p, root_pkg)
+                reachable.contains(&p.id)
+                    && build_support::needs_separate_attribution(
+                        p.license.as_deref(),
+                        &p.authors,
+                        root_pkg.license.as_deref(),
+                        &root_pkg.authors,
+                    )
             } else {
                 p.source.is_some()
             }
@@ -266,30 +272,6 @@ fn reachable_from_root(
         }
     }
     Ok(reachable)
-}
-
-/// Return `true` if a workspace member's license or authorship differs
-/// from the root package's and so requires its own attribution entry in the
-/// manifest. The comparison normalises SPDX expressions (so `MIT OR
-/// Apache-2.0` and `Apache-2.0 OR MIT` are treated as equivalent) and
-/// compares author sets order-independently.
-fn needs_separate_attribution(pkg: &cargo_metadata::Package, root: &cargo_metadata::Package) -> bool {
-    // Compare normalized SPDX id sets.
-    match (&pkg.license, &root.license) {
-        (Some(pkg_lic), Some(root_lic)) => {
-            let pkg_ids = build_support::parse_spdx_ids(pkg_lic);
-            let root_ids = build_support::parse_spdx_ids(root_lic);
-            if pkg_ids != root_ids {
-                return true;
-            }
-        }
-        (None, None) => {}
-        _ => return true, // one declares a license, the other doesn't
-    }
-    // Compare author sets (order-independent).
-    let pkg_authors: HashSet<&str> = pkg.authors.iter().map(String::as_str).collect();
-    let root_authors: HashSet<&str> = root.authors.iter().map(String::as_str).collect();
-    pkg_authors != root_authors
 }
 
 fn enabled_top_level_features() -> Vec<String> {

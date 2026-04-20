@@ -302,73 +302,86 @@ fn unix_targets_include_xattr_and_windows_does_not() {
 // Workspace-member variation
 // ---------------------------------------------------------------------------
 //
-// The test suite for third-party crates (above) pins specific examples
-// that are known to vary by feature or platform. For workspace members,
-// the current tree has no such variation: every reachable `gix-*` crate
-// is pulled in under every feature profile and every supported platform.
-// The tests below codify that invariant so if a future change makes some
-// workspace crate conditional — say, a new `gix-tokio` only under
-// `lean-async`, or a `gix-windows-specific` only on Windows — the test
-// fails loudly rather than silently attributing a crate in builds that
-// don't actually link it.
+// At least one workspace crate IS feature-gated for the `gitoxide`
+// binary: `gix-archive` is an optional dep of `gix` behind the
+// `worktree-archive` feature, which `small` does not enable but `max`
+// does. `max_enables_gix_archive_but_small_does_not` pins this case so
+// the feature-aware reachability filter in `build.rs` (and the
+// independent implementation in `tests/licenses_parity.rs` and the
+// helper here) stays honest about what actually ends up in the binary.
 //
-// The manifest's own author/license filter is tested separately by
+// Separately, `dev_only_gix_crates_never_reachable_from_gitoxide`
+// asserts the invariant for the `gix-testtools` / `*-tests` crates
+// that live only in `[dev-dependencies]`.
+//
+// The manifest's own author/license filter is tested by
 // `tests/licenses_workspace_attribution.rs` and the sentinel tests in
-// `src/licenses/embedded.rs`; these tests are about the underlying
-// cargo resolution that feeds both the manifest and the binary.
+// `src/licenses/embedded.rs`.
 
 #[test]
-fn reachable_workspace_member_set_is_identical_across_features() {
-    let mut per_feature: std::collections::BTreeMap<&str, BTreeSet<String>> = std::collections::BTreeMap::new();
-    for feat in ["max", "max-pure", "lean", "small", "lean-async"] {
-        let (ws, _) = reachable_crate_names(&[feat], FEATURE_TEST_TARGET);
-        per_feature.insert(feat, ws);
-    }
-    let (baseline_feat, baseline) = per_feature
-        .iter()
-        .next()
-        .map(|(k, v)| (*k, v.clone()))
-        .expect("at least one feature profile checked");
-    for (feat, ws) in &per_feature {
-        if *feat == baseline_feat {
-            continue;
-        }
-        let only_here: Vec<&String> = ws.difference(&baseline).collect();
-        let only_there: Vec<&String> = baseline.difference(ws).collect();
+fn max_enables_gix_archive_but_small_does_not_per_cargo_tree() {
+    // `gix-archive` is an optional dep of `gix` gated on the
+    // `worktree-archive` feature. `max` enables it (via `gix` default
+    // features, transitively); `small` does not. This is a concrete
+    // example of feature-gated workspace-crate linkage that the
+    // feature-aware reachability filter in `build.rs` (and its
+    // independent replica in `tests/licenses_parity.rs`) must respect.
+    //
+    // Uses `cargo tree -p gitoxide --edges normal --features X` as the
+    // source of truth — that output reflects cargo's own resolver,
+    // which is the first-principles definition of what is linked.
+    fn names_in_tree(features: &str) -> std::collections::BTreeSet<String> {
+        let mut cmd = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+        cmd.args([
+            "tree",
+            "-p",
+            "gitoxide",
+            "--prefix",
+            "none",
+            "--edges",
+            "normal",
+            "--no-default-features",
+            "--features",
+            features,
+            "--target",
+            FEATURE_TEST_TARGET,
+        ]);
+        cmd.current_dir(env!("CARGO_MANIFEST_DIR"));
+        let output = cmd.output().expect("run cargo tree");
         assert!(
-            only_here.is_empty() && only_there.is_empty(),
-            "reachable workspace-member set differs between `{baseline_feat}` and `{feat}` on {FEATURE_TEST_TARGET}:\n  \
-             only in `{feat}`:        {only_here:?}\n  \
-             only in `{baseline_feat}`: {only_there:?}",
+            output.status.success(),
+            "`cargo tree` failed ({}):\nstderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr),
         );
+        let text = String::from_utf8(output.stdout).expect("cargo tree output is UTF-8");
+        let mut set = std::collections::BTreeSet::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // Lines look like `crate-name vX.Y.Z (path-or-source) (*)`.
+            // The first whitespace-delimited token is the crate name.
+            if let Some(name) = line.split_whitespace().next() {
+                set.insert(name.to_string());
+            }
+        }
+        set
     }
-}
 
-#[test]
-fn reachable_workspace_member_set_is_identical_across_platforms() {
-    let mut per_platform: std::collections::BTreeMap<&str, BTreeSet<String>> = std::collections::BTreeMap::new();
-    for platform in [LINUX_TARGET, WINDOWS_TARGET, APPLE_TARGET] {
-        let (ws, _) = reachable_crate_names(&["max-pure"], platform);
-        per_platform.insert(platform, ws);
-    }
-    let (baseline_platform, baseline) = per_platform
-        .iter()
-        .next()
-        .map(|(k, v)| (*k, v.clone()))
-        .expect("at least one platform checked");
-    for (platform, ws) in &per_platform {
-        if *platform == baseline_platform {
-            continue;
-        }
-        let only_here: Vec<&String> = ws.difference(&baseline).collect();
-        let only_there: Vec<&String> = baseline.difference(ws).collect();
-        assert!(
-            only_here.is_empty() && only_there.is_empty(),
-            "reachable workspace-member set differs between `{baseline_platform}` and `{platform}` on max-pure:\n  \
-             only on `{platform}`:        {only_here:?}\n  \
-             only on `{baseline_platform}`: {only_there:?}",
-        );
-    }
+    let max_tree = names_in_tree("max");
+    let small_tree = names_in_tree("small");
+    assert!(
+        max_tree.contains("gix-archive"),
+        "`max` profile should pull in `gix-archive` per cargo tree (got {} crates)",
+        max_tree.len(),
+    );
+    assert!(
+        !small_tree.contains("gix-archive"),
+        "`small` profile should NOT pull in `gix-archive` per cargo tree (got {} crates)",
+        small_tree.len(),
+    );
 }
 
 #[test]

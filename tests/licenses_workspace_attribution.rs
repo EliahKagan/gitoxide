@@ -53,11 +53,17 @@ fn run_cargo_metadata() -> serde_json::Value {
     serde_json::from_slice(&output.stdout).expect("parse cargo-metadata JSON")
 }
 
-/// BFS from the `gitoxide` package through the resolve graph, returning
-/// every package ID reachable from it. Mirrors `reachable_from_root` in
-/// `build.rs`, but independently — if either side has a bug, the two will
-/// disagree visibly.
+/// BFS from `gitoxide` through `resolve.nodes`, following every dep edge
+/// that is (a) non-dev and (b) actually activated under the current
+/// feature resolution. Independent of `build.rs`'s Rust implementation —
+/// operates on raw JSON so a shared-struct layout bug cannot corrupt
+/// both sides simultaneously.
+///
+/// See `optional_dep_activated_by_features` below for the activator-
+/// string semantics (`"dep:foo"`, `"foo"`, `"foo/bar"`, `"foo?/bar"`).
 fn reachable_from_gitoxide(md: &serde_json::Value) -> BTreeSet<String> {
+    use std::collections::HashMap;
+
     let resolve = md.get("resolve").and_then(|r| r.get("nodes")).expect("resolve.nodes");
     let root_id = md["packages"]
         .as_array()
@@ -68,16 +74,61 @@ fn reachable_from_gitoxide(md: &serde_json::Value) -> BTreeSet<String> {
         .expect("gitoxide package in metadata")
         .to_string();
 
-    let mut deps: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let packages_by_id: HashMap<&str, &serde_json::Value> = md["packages"]
+        .as_array()
+        .expect("packages array")
+        .iter()
+        .filter_map(|p| p["id"].as_str().map(|id| (id, p)))
+        .collect();
+    let features_by_id: HashMap<&str, BTreeSet<&str>> = resolve
+        .as_array()
+        .expect("resolve.nodes array")
+        .iter()
+        .filter_map(|n| {
+            let id = n["id"].as_str()?;
+            let features: BTreeSet<&str> = n["features"]
+                .as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+            Some((id, features))
+        })
+        .collect();
+
+    let mut deps: HashMap<String, Vec<String>> = HashMap::new();
     for node in resolve.as_array().expect("resolve.nodes is array") {
-        let id = node["id"].as_str().unwrap_or("").to_string();
+        let owner_id = node["id"].as_str().unwrap_or("");
+        let owner_pkg = packages_by_id.get(owner_id).copied();
+        let owner_features = features_by_id.get(owner_id);
         let mut ds = Vec::new();
         for dep in node["deps"].as_array().unwrap_or(&Vec::new()) {
-            if let Some(pkg) = dep["pkg"].as_str() {
-                ds.push(pkg.to_string());
+            let Some(pkg) = dep["pkg"].as_str() else { continue };
+            let kinds = dep["dep_kinds"].as_array();
+            let has_non_dev_edge = match kinds {
+                None => true,
+                Some(arr) if arr.is_empty() => true,
+                Some(arr) => arr.iter().any(|dk| dk["kind"].as_str() != Some("dev")),
+            };
+            if !has_non_dev_edge {
+                continue;
             }
+            let dep_alias = dep["name"].as_str().unwrap_or("");
+            let raw_dep_name = packages_by_id.get(pkg).and_then(|p| p["name"].as_str()).unwrap_or("");
+            let is_optional = owner_pkg
+                .and_then(|p| p["dependencies"].as_array())
+                .is_some_and(|deps| {
+                    deps.iter().any(|md_dep| {
+                        let opt = md_dep["optional"].as_bool().unwrap_or(false);
+                        let name = md_dep["name"].as_str().unwrap_or("");
+                        let rename = md_dep["rename"].as_str();
+                        opt && name == raw_dep_name && (rename.is_none() || rename == Some(dep_alias))
+                    })
+                });
+            if is_optional && !optional_dep_activated_by_features(owner_pkg, owner_features, dep_alias, raw_dep_name) {
+                continue;
+            }
+            ds.push(pkg.to_string());
         }
-        deps.insert(id, ds);
+        deps.insert(owner_id.to_string(), ds);
     }
 
     let mut reachable: BTreeSet<String> = BTreeSet::new();
@@ -96,8 +147,53 @@ fn reachable_from_gitoxide(md: &serde_json::Value) -> BTreeSet<String> {
     reachable
 }
 
-/// Crate names the built `gix` binary embeds in its license manifest.
-fn binary_manifest_crate_names() -> BTreeSet<String> {
+fn optional_dep_activated_by_features(
+    owner_pkg: Option<&serde_json::Value>,
+    owner_features: Option<&BTreeSet<&str>>,
+    alias_name: &str,
+    raw_dep_name: &str,
+) -> bool {
+    let Some(owner_pkg) = owner_pkg else { return false };
+    let Some(owner_features) = owner_features else {
+        return false;
+    };
+    if owner_features.contains(alias_name) {
+        return true;
+    }
+    let Some(feat_map) = owner_pkg["features"].as_object() else {
+        return false;
+    };
+    for f in owner_features {
+        let Some(arr) = feat_map.get(*f).and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for a in arr {
+            let Some(s) = a.as_str() else { continue };
+            if activator_enables(s, alias_name, raw_dep_name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn activator_enables(activator: &str, alias_name: &str, raw_dep_name: &str) -> bool {
+    let matches = |n: &str| n == alias_name || n == raw_dep_name;
+    if let Some(rest) = activator.strip_prefix("dep:") {
+        return matches(rest);
+    }
+    if activator.contains("?/") {
+        return false;
+    }
+    if let Some((name, _)) = activator.split_once('/') {
+        return matches(name);
+    }
+    matches(activator)
+}
+
+/// Parse the built `gix` binary's manifest and return both name sets:
+/// full-attribution entries and the names-only same-attribution list.
+fn binary_manifest() -> (BTreeSet<String>, BTreeSet<String>) {
     let gix = env!("CARGO_BIN_EXE_gix");
     let output = Command::new(gix)
         .args(["licenses", "--format", "json"])
@@ -110,12 +206,17 @@ fn binary_manifest_crate_names() -> BTreeSet<String> {
         String::from_utf8_lossy(&output.stderr),
     );
     let data: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse `gix licenses` JSON");
-    data["crates"]
+    let full: BTreeSet<String> = data["crates"]
         .as_array()
         .expect("`crates` is an array")
         .iter()
         .filter_map(|c| c["name"].as_str().map(String::from))
-        .collect()
+        .collect();
+    let same_attrib: BTreeSet<String> = data["workspace_members_same_attribution"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    (full, same_attrib)
 }
 
 /// Whitespace-tokenised, sorted form of an SPDX license expression.
@@ -163,10 +264,12 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
     let root_license_tokens = root_license.as_deref().map(sorted_license_tokens);
     let root_authors = authors_of(root);
 
-    let manifest_names = binary_manifest_crate_names();
+    let (full, same_attrib) = binary_manifest();
 
     let mut missing_despite_author_diff: Vec<String> = Vec::new();
-    let mut present_despite_full_match: Vec<String> = Vec::new();
+    let mut full_entry_despite_exact_match: Vec<String> = Vec::new();
+    let mut in_both_lists: Vec<String> = Vec::new();
+    let mut in_neither_list: Vec<String> = Vec::new();
     let mut license_raw_differs_only: Vec<String> = Vec::new();
 
     for p in md["packages"].as_array().expect("packages array") {
@@ -191,32 +294,42 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
         let license_tokens_differ = pkg_license_tokens != root_license_tokens;
         let license_raw_differs = pkg_license != root_license;
 
-        let in_manifest = manifest_names.contains(&name);
+        let in_full = full.contains(&name);
+        let in_same_attrib = same_attrib.contains(&name);
 
-        // Hard rule 1: a workspace member whose authors differ from the
-        // root's MUST be in the manifest. Author-set equality is a
-        // simple BTreeSet comparison whose result is independent of any
-        // license parser bug, so this direction admits no excuse.
-        if author_differs && !in_manifest {
+        // Hard rule 1: every reachable workspace member must be
+        // represented in exactly one of the two manifest buckets.
+        match (in_full, in_same_attrib) {
+            (true, true) => in_both_lists.push(name.clone()),
+            (false, false) => in_neither_list.push(name.clone()),
+            _ => {}
+        }
+
+        // Hard rule 2: a workspace member whose authors differ from the
+        // root's MUST land in the full-attribution list. Author-set
+        // equality is a simple BTreeSet comparison whose result is
+        // independent of any license parser bug, so this direction admits
+        // no excuse.
+        if author_differs && !in_full {
             missing_despite_author_diff.push(format!("{name} (authors {pkg_authors:?} vs root {root_authors:?})",));
             continue;
         }
 
-        // Hard rule 2: a workspace member whose license literally equals
+        // Hard rule 3: a workspace member whose license literally equals
         // the root's AND whose authors literally equal the root's MUST
-        // NOT be in the manifest. This catches production accidentally
-        // including a crate whose metadata matches the root exactly.
-        if !author_differs && !license_raw_differs && in_manifest {
-            present_despite_full_match.push(name.clone());
+        // land in the names-only same-attribution list, NOT in the
+        // full-entry list.
+        if !author_differs && !license_raw_differs && in_full {
+            full_entry_despite_exact_match.push(name.clone());
             continue;
         }
 
         // Soft note: license strings differ literally but sort-and-compare
         // calls them the same (i.e. the only difference is token order).
         // Production's SPDX-normalised comparison also calls them the
-        // same, so its excluding this crate is correct. We surface the
-        // case anyway so a reviewer can eyeball it.
-        if license_raw_differs && !license_tokens_differ && !author_differs && !in_manifest {
+        // same, so its excluding such a crate from the full-entry list
+        // is correct. Surface the case for reviewer eyeballing.
+        if license_raw_differs && !license_tokens_differ && !author_differs && !in_full {
             license_raw_differs_only.push(format!("{name} (license {pkg_license:?} vs root {root_license:?})"));
         }
     }
@@ -224,7 +337,7 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
     if !license_raw_differs_only.is_empty() {
         eprintln!(
             "note: workspace members with literal-but-not-sorted-token license differences, \
-             excluded by production (SPDX-normalised) and by this test (sorted tokens) alike:",
+             excluded by production (SPDX-normalised) from the full-entry list:",
         );
         for line in &license_raw_differs_only {
             eprintln!("  {line}");
@@ -232,10 +345,15 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
     }
 
     assert!(
-        missing_despite_author_diff.is_empty() && present_despite_full_match.is_empty(),
+        missing_despite_author_diff.is_empty()
+            && full_entry_despite_exact_match.is_empty()
+            && in_both_lists.is_empty()
+            && in_neither_list.is_empty(),
         "workspace-member attribution verdict disagrees with the embedded manifest:\n  \
-         workspace members with differing authors but NOT in manifest: {missing_despite_author_diff:?}\n  \
-         workspace members matching root exactly but present in manifest: {present_despite_full_match:?}",
+         workspace members with differing authors but NOT in full-entry list: {missing_despite_author_diff:?}\n  \
+         workspace members matching root exactly but PRESENT in full-entry list: {full_entry_despite_exact_match:?}\n  \
+         workspace members in BOTH lists (should be in exactly one): {in_both_lists:?}\n  \
+         workspace members in NEITHER list (must be in one): {in_neither_list:?}",
     );
 }
 

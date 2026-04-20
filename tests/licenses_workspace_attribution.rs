@@ -311,7 +311,7 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
         // independent of any license parser bug, so this direction admits
         // no excuse.
         if author_differs && !in_full {
-            missing_despite_author_diff.push(format!("{name} (authors {pkg_authors:?} vs root {root_authors:?})",));
+            missing_despite_author_diff.push(format!("{name} (authors {pkg_authors:?} vs root {root_authors:?})"));
             continue;
         }
 

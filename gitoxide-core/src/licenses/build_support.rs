@@ -100,6 +100,39 @@ pub fn parse_spdx_ids(expression: &str) -> Vec<String> {
     ids
 }
 
+/// Return `true` if a package's license or authorship differs from the
+/// `root` package's and so requires its own attribution entry in the manifest.
+///
+/// The license comparison normalises SPDX expressions (so `MIT OR Apache-2.0`
+/// and `Apache-2.0 OR MIT` are treated as equivalent) via [`parse_spdx_ids`],
+/// and the author comparison is order-independent.
+///
+/// Takes plain types (`Option<&str>` for the SPDX expression, `&[String]` for
+/// authors) so it can live on the shared library side and be reused by
+/// `build.rs` without `build.rs` forcing `cargo_metadata` into the library's
+/// dependency surface.
+pub fn needs_separate_attribution(
+    pkg_license: Option<&str>,
+    pkg_authors: &[String],
+    root_license: Option<&str>,
+    root_authors: &[String],
+) -> bool {
+    match (pkg_license, root_license) {
+        (Some(pkg_lic), Some(root_lic)) => {
+            if parse_spdx_ids(pkg_lic) != parse_spdx_ids(root_lic) {
+                return true;
+            }
+        }
+        (None, None) => {}
+        // One declares a license, the other doesn't — different enough to
+        // require its own entry.
+        _ => return true,
+    }
+    let pkg_set: std::collections::HashSet<&str> = pkg_authors.iter().map(String::as_str).collect();
+    let root_set: std::collections::HashSet<&str> = root_authors.iter().map(String::as_str).collect();
+    pkg_set != root_set
+}
+
 /// Build a list of fallback [`LicenseFile`] entries for a crate that ships
 /// no license file of its own, using bundled canonical SPDX text wherever
 /// `lookup` can provide it.
@@ -259,5 +292,98 @@ mod tests {
     fn spdx_fallback_returns_empty_for_unparsable_expression() {
         let files = spdx_fallback_files("", |_| Some("never"));
         assert!(files.is_empty());
+    }
+
+    // ----- needs_separate_attribution -----
+
+    fn author(name: &str) -> Vec<String> {
+        vec![name.to_string()]
+    }
+
+    #[test]
+    fn same_license_and_same_authors_does_not_need_separate_attribution() {
+        assert!(!needs_separate_attribution(
+            Some("MIT OR Apache-2.0"),
+            &author("Alice"),
+            Some("MIT OR Apache-2.0"),
+            &author("Alice"),
+        ));
+    }
+
+    #[test]
+    fn spdx_order_is_ignored_for_license_equality() {
+        // `A OR B` and `B OR A` must be treated as equivalent.
+        assert!(!needs_separate_attribution(
+            Some("Apache-2.0 OR MIT"),
+            &author("Alice"),
+            Some("MIT OR Apache-2.0"),
+            &author("Alice"),
+        ));
+    }
+
+    #[test]
+    fn different_license_requires_separate_attribution() {
+        assert!(needs_separate_attribution(
+            Some("Apache-2.0"),
+            &author("Alice"),
+            Some("MIT OR Apache-2.0"),
+            &author("Alice"),
+        ));
+    }
+
+    #[test]
+    fn different_authors_require_separate_attribution() {
+        assert!(needs_separate_attribution(
+            Some("MIT OR Apache-2.0"),
+            &author("Bob"),
+            Some("MIT OR Apache-2.0"),
+            &author("Alice"),
+        ));
+    }
+
+    #[test]
+    fn author_set_order_is_ignored() {
+        let pkg = vec!["Alice".to_string(), "Bob".to_string()];
+        let root = vec!["Bob".to_string(), "Alice".to_string()];
+        assert!(!needs_separate_attribution(Some("MIT"), &pkg, Some("MIT"), &root));
+    }
+
+    #[test]
+    fn extra_author_requires_separate_attribution() {
+        let pkg = vec!["Alice".to_string(), "Bob".to_string()];
+        let root = vec!["Alice".to_string()];
+        assert!(needs_separate_attribution(Some("MIT"), &pkg, Some("MIT"), &root));
+    }
+
+    #[test]
+    fn one_side_missing_license_requires_separate_attribution() {
+        assert!(needs_separate_attribution(
+            None,
+            &author("Alice"),
+            Some("MIT"),
+            &author("Alice"),
+        ));
+        assert!(needs_separate_attribution(
+            Some("MIT"),
+            &author("Alice"),
+            None,
+            &author("Alice"),
+        ));
+    }
+
+    #[test]
+    fn both_missing_license_falls_back_to_author_comparison() {
+        assert!(!needs_separate_attribution(
+            None,
+            &author("Alice"),
+            None,
+            &author("Alice"),
+        ));
+        assert!(needs_separate_attribution(None, &author("Alice"), None, &author("Bob"),));
+    }
+
+    #[test]
+    fn both_empty_author_lists_are_equal() {
+        assert!(!needs_separate_attribution(Some("MIT"), &[], Some("MIT"), &[]));
     }
 }

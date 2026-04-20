@@ -25,8 +25,18 @@ use std::process::Command;
 
 /// Invoke `cargo metadata` for the top-level `gitoxide` package with the
 /// given feature set and target platform, returning the set of names of
-/// every third-party (non-workspace, sourced) crate it reports.
+/// every third-party (non-workspace, sourced) crate it reports that is
+/// reachable from `gitoxide` via a non-dev dep edge.
 fn third_party_crate_names(features: &[&str], platform: &str) -> BTreeSet<String> {
+    let (_, third_party) = reachable_crate_names(features, platform);
+    third_party
+}
+
+/// Same inputs as above, but returns both reachable workspace members
+/// and reachable third-party crates. Reachability excludes dev-only
+/// transits so the sets reflect what is actually linked into a binary
+/// built with the given feature/platform.
+fn reachable_crate_names(features: &[&str], platform: &str) -> (BTreeSet<String>, BTreeSet<String>) {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut cmd = Command::new(cargo);
     cmd.args(["metadata", "--format-version", "1", "--no-default-features"]);
@@ -49,16 +59,75 @@ fn third_party_crate_names(features: &[&str], platform: &str) -> BTreeSet<String
         .iter()
         .filter_map(|v| v.as_str().map(String::from))
         .collect();
-    metadata["packages"]
+
+    let reachable = reachable_from_gitoxide_via_non_dev(&metadata);
+
+    let mut ws_names = BTreeSet::new();
+    let mut third_party_names = BTreeSet::new();
+    for p in metadata["packages"].as_array().expect("packages array") {
+        let id = p["id"].as_str().unwrap_or("").to_string();
+        if !reachable.contains(&id) {
+            continue;
+        }
+        let name = p["name"].as_str().unwrap_or("").to_string();
+        if workspace_members.contains(&id) {
+            ws_names.insert(name);
+        } else if !p["source"].is_null() {
+            third_party_names.insert(name);
+        }
+    }
+    (ws_names, third_party_names)
+}
+
+/// BFS from the `gitoxide` package through `resolve.nodes`, following
+/// every dep edge whose `dep_kinds` is empty or contains at least one
+/// kind that is not `"dev"`. Independent from `build.rs` — operates on
+/// raw JSON to rule out a whole class of coordinated bugs.
+fn reachable_from_gitoxide_via_non_dev(md: &serde_json::Value) -> BTreeSet<String> {
+    use std::collections::{HashMap, VecDeque};
+
+    let root_id = md["packages"]
         .as_array()
-        .expect("packages is an array")
+        .expect("packages array")
         .iter()
-        .filter(|p| {
-            let id = p["id"].as_str().unwrap_or("");
-            !workspace_members.contains(id) && !p["source"].is_null()
-        })
-        .filter_map(|p| p["name"].as_str().map(String::from))
-        .collect()
+        .find(|p| p["name"].as_str() == Some("gitoxide"))
+        .and_then(|p| p["id"].as_str())
+        .expect("gitoxide package in metadata")
+        .to_string();
+
+    let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+    for node in md["resolve"]["nodes"].as_array().expect("resolve.nodes array") {
+        let owner = node["id"].as_str().unwrap_or("").to_string();
+        let mut linked = Vec::new();
+        for dep in node["deps"].as_array().unwrap_or(&Vec::new()) {
+            let Some(target) = dep["pkg"].as_str() else { continue };
+            let dep_kinds = dep["dep_kinds"].as_array();
+            let has_non_dev_edge = match dep_kinds {
+                None => true,
+                Some(kinds) if kinds.is_empty() => true,
+                Some(kinds) => kinds.iter().any(|dk| dk["kind"].as_str() != Some("dev")),
+            };
+            if has_non_dev_edge {
+                linked.push(target.to_string());
+            }
+        }
+        adjacency.insert(owner, linked);
+    }
+
+    let mut reachable = BTreeSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    queue.push_back(root_id);
+    while let Some(id) = queue.pop_front() {
+        if !reachable.insert(id.clone()) {
+            continue;
+        }
+        if let Some(neighbours) = adjacency.get(&id) {
+            for n in neighbours {
+                queue.push_back(n.clone());
+            }
+        }
+    }
+    reachable
 }
 
 // ---------------------------------------------------------------------------
@@ -210,13 +279,116 @@ fn non_apple_targets_do_not_include_security_framework() {
 }
 
 #[test]
-fn unix_targets_include_nix_and_windows_does_not() {
-    // `nix` is a thin wrapper over Unix syscalls; it's pulled in on Linux
-    // and macOS but not on Windows.
+fn unix_targets_include_xattr_and_windows_does_not() {
+    // `xattr` wraps the `getxattr`/`setxattr` syscall family that only
+    // exists on Unix. It is pulled into the `gix` / `ein` binary on Linux
+    // and macOS through normal (non-dev) edges and is absent on Windows.
     for platform in [LINUX_TARGET, APPLE_TARGET] {
         let crates = third_party_crate_names(&["max-pure"], platform);
-        assert!(crates.contains("nix"), "Unix target {platform} should include `nix`",);
+        assert!(
+            crates.contains("xattr"),
+            "Unix target {platform} should include `xattr` (got {} crates)",
+            crates.len(),
+        );
     }
     let win_crates = third_party_crate_names(&["max-pure"], WINDOWS_TARGET);
-    assert!(!win_crates.contains("nix"), "Windows target should not include `nix`",);
+    assert!(
+        !win_crates.contains("xattr"),
+        "Windows target should not include `xattr`",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Workspace-member variation
+// ---------------------------------------------------------------------------
+//
+// The test suite for third-party crates (above) pins specific examples
+// that are known to vary by feature or platform. For workspace members,
+// the current tree has no such variation: every reachable `gix-*` crate
+// is pulled in under every feature profile and every supported platform.
+// The tests below codify that invariant so if a future change makes some
+// workspace crate conditional — say, a new `gix-tokio` only under
+// `lean-async`, or a `gix-windows-specific` only on Windows — the test
+// fails loudly rather than silently attributing a crate in builds that
+// don't actually link it.
+//
+// The manifest's own author/license filter is tested separately by
+// `tests/licenses_workspace_attribution.rs` and the sentinel tests in
+// `src/licenses/embedded.rs`; these tests are about the underlying
+// cargo resolution that feeds both the manifest and the binary.
+
+#[test]
+fn reachable_workspace_member_set_is_identical_across_features() {
+    let mut per_feature: std::collections::BTreeMap<&str, BTreeSet<String>> = std::collections::BTreeMap::new();
+    for feat in ["max", "max-pure", "lean", "small", "lean-async"] {
+        let (ws, _) = reachable_crate_names(&[feat], FEATURE_TEST_TARGET);
+        per_feature.insert(feat, ws);
+    }
+    let (baseline_feat, baseline) = per_feature
+        .iter()
+        .next()
+        .map(|(k, v)| (*k, v.clone()))
+        .expect("at least one feature profile checked");
+    for (feat, ws) in &per_feature {
+        if *feat == baseline_feat {
+            continue;
+        }
+        let only_here: Vec<&String> = ws.difference(&baseline).collect();
+        let only_there: Vec<&String> = baseline.difference(ws).collect();
+        assert!(
+            only_here.is_empty() && only_there.is_empty(),
+            "reachable workspace-member set differs between `{baseline_feat}` and `{feat}` on {FEATURE_TEST_TARGET}:\n  \
+             only in `{feat}`:        {only_here:?}\n  \
+             only in `{baseline_feat}`: {only_there:?}",
+        );
+    }
+}
+
+#[test]
+fn reachable_workspace_member_set_is_identical_across_platforms() {
+    let mut per_platform: std::collections::BTreeMap<&str, BTreeSet<String>> = std::collections::BTreeMap::new();
+    for platform in [LINUX_TARGET, WINDOWS_TARGET, APPLE_TARGET] {
+        let (ws, _) = reachable_crate_names(&["max-pure"], platform);
+        per_platform.insert(platform, ws);
+    }
+    let (baseline_platform, baseline) = per_platform
+        .iter()
+        .next()
+        .map(|(k, v)| (*k, v.clone()))
+        .expect("at least one platform checked");
+    for (platform, ws) in &per_platform {
+        if *platform == baseline_platform {
+            continue;
+        }
+        let only_here: Vec<&String> = ws.difference(&baseline).collect();
+        let only_there: Vec<&String> = baseline.difference(ws).collect();
+        assert!(
+            only_here.is_empty() && only_there.is_empty(),
+            "reachable workspace-member set differs between `{baseline_platform}` and `{platform}` on max-pure:\n  \
+             only on `{platform}`:        {only_here:?}\n  \
+             only on `{baseline_platform}`: {only_there:?}",
+        );
+    }
+}
+
+#[test]
+fn dev_only_gix_crates_never_reachable_from_gitoxide() {
+    // `gix-testtools` and the `*-tests` crates exist only as
+    // dev-dependencies of other workspace members. They are not linked
+    // into any build of `gix` / `ein`, so they must never show up in the
+    // reachable workspace-member set, regardless of feature or platform.
+    let dev_only = ["gix-testtools", "gix-config-tests", "gix-status-tests"];
+    for feat in ["max", "max-pure", "lean", "small", "lean-async"] {
+        for platform in [LINUX_TARGET, WINDOWS_TARGET, APPLE_TARGET] {
+            let (ws, _) = reachable_crate_names(&[feat], platform);
+            for name in dev_only {
+                assert!(
+                    !ws.contains(name),
+                    "dev-only workspace crate `{name}` must not be reachable from `gitoxide` \
+                     with features={feat} platform={platform} (got {} reachable workspace members)",
+                    ws.len(),
+                );
+            }
+        }
+    }
 }

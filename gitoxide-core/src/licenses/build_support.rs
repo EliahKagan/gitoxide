@@ -133,6 +133,79 @@ pub fn needs_separate_attribution(
     pkg_set != root_set
 }
 
+/// Return `true` if the cargo feature-activator string `activator` would
+/// activate the optional dep whose owner-side alias is `alias_name` and
+/// whose underlying package name is `raw_dep_name`.
+///
+/// Activator syntaxes, from cargo's features reference:
+///
+/// * `"dep:foo"` — explicit activation of the optional dep `foo` (modern).
+/// * `"foo"` — in pre-2021-edition crates that don't use the `dep:`
+///   syntax anywhere, this also activates optional dep `foo` (legacy
+///   implicit-feature behaviour).
+/// * `"foo/bar"` — activates the optional dep `foo` *and* sets feature
+///   `bar` on it. Strong activation.
+/// * `"foo?/bar"` — *weak* activation: sets feature `bar` on `foo` only
+///   if `foo` is otherwise enabled. Does not by itself activate `foo`.
+///
+/// The function matches against either the alias name or the raw package
+/// name so a renamed dep (e.g.
+/// `foo-alias = { package = "foo", optional = true }`) is handled whether
+/// the activator refers to it as `foo-alias` or (less conventionally) as
+/// `foo`. This is conservatively inclusive — license attribution is
+/// safer when slightly over-inclusive than when a linked crate is
+/// omitted.
+pub fn activator_enables(activator: &str, alias_name: &str, raw_dep_name: &str) -> bool {
+    let matches = |n: &str| n == alias_name || n == raw_dep_name;
+    if let Some(rest) = activator.strip_prefix("dep:") {
+        return matches(rest);
+    }
+    if activator.contains("?/") {
+        return false;
+    }
+    if let Some((name, _)) = activator.split_once('/') {
+        return matches(name);
+    }
+    matches(activator)
+}
+
+/// Return `true` if any activator reachable from `owner_enabled_features`
+/// through `owner_features_table` enables the optional dep whose alias
+/// is `alias_name` and whose package name is `raw_dep_name`.
+///
+/// Also honours cargo's "implicit feature named after the optional dep":
+/// if `owner_enabled_features` itself contains the alias, the dep is
+/// considered active.
+///
+/// `owner_features_table` is the `features` map from the owner package
+/// as reported by cargo metadata — i.e. feature name → list of activator
+/// strings. `owner_enabled_features` is the expanded set of feature
+/// names cargo has resolved as active on the owner under the current
+/// feature selection. Taking these two inputs verbatim keeps this
+/// function a pure transformation: the cargo resolver remains the
+/// source of truth for which features are active.
+pub fn any_activator_enables_dep(
+    owner_features_table: &std::collections::BTreeMap<String, Vec<String>>,
+    owner_enabled_features: &[String],
+    alias_name: &str,
+    raw_dep_name: &str,
+) -> bool {
+    if owner_enabled_features.iter().any(|f| f == alias_name) {
+        return true;
+    }
+    for f in owner_enabled_features {
+        let Some(activators) = owner_features_table.get(f) else {
+            continue;
+        };
+        for a in activators {
+            if activator_enables(a, alias_name, raw_dep_name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Build a list of fallback [`LicenseFile`] entries for a crate that ships
 /// no license file of its own, using bundled canonical SPDX text wherever
 /// `lookup` can provide it.
@@ -385,5 +458,155 @@ mod tests {
     #[test]
     fn both_empty_author_lists_are_equal() {
         assert!(!needs_separate_attribution(Some("MIT"), &[], Some("MIT"), &[]));
+    }
+
+    // ----- activator_enables -----
+
+    #[test]
+    fn dep_prefix_activates_exact_alias() {
+        assert!(activator_enables("dep:foo", "foo", "foo"));
+    }
+
+    #[test]
+    fn dep_prefix_activates_renamed_alias() {
+        // `foo-alias = { package = "foo", optional = true }`, activator
+        // referencing the alias.
+        assert!(activator_enables("dep:foo-alias", "foo-alias", "foo"));
+    }
+
+    #[test]
+    fn dep_prefix_also_activates_by_raw_name_conservatively() {
+        // Cargo semantics say activators reference aliases, but matching
+        // on the raw name too keeps us on the safe side of over-inclusion
+        // rather than silently dropping a crate that is in fact linked.
+        assert!(activator_enables("dep:foo", "foo-alias", "foo"));
+    }
+
+    #[test]
+    fn dep_prefix_does_not_activate_other_deps() {
+        assert!(!activator_enables("dep:bar", "foo", "foo"));
+    }
+
+    #[test]
+    fn bare_name_activates_optional_dep_legacy_style() {
+        // Legacy syntax still widely in use — e.g. gix's
+        // `worktree-archive = ["gix-archive", ...]`.
+        assert!(activator_enables("foo", "foo", "foo"));
+    }
+
+    #[test]
+    fn bare_name_rejects_non_matching() {
+        assert!(!activator_enables("bar", "foo", "foo"));
+    }
+
+    #[test]
+    fn strong_slash_activates_the_named_dep() {
+        // `"foo/bar"` enables the dep `foo` *and* its feature `bar`.
+        assert!(activator_enables("foo/bar", "foo", "foo"));
+    }
+
+    #[test]
+    fn strong_slash_requires_name_match() {
+        assert!(!activator_enables("other/bar", "foo", "foo"));
+    }
+
+    #[test]
+    fn weak_activator_does_not_enable_by_itself() {
+        // `"foo?/bar"` is weak: it only sets `bar` on `foo` if `foo` is
+        // already enabled by some other means. On its own it does NOT
+        // activate `foo`.
+        assert!(!activator_enables("foo?/bar", "foo", "foo"));
+    }
+
+    #[test]
+    fn weak_activator_does_not_enable_even_with_dep_prefix() {
+        // `"dep:foo?/bar"` is not a real activator form, but make sure
+        // the weak-marker substring takes precedence over the prefix.
+        assert!(!activator_enables("dep:foo?/bar", "foo", "foo"));
+    }
+
+    // ----- any_activator_enables_dep -----
+
+    fn feature_table(pairs: &[(&str, &[&str])]) -> std::collections::BTreeMap<String, Vec<String>> {
+        pairs
+            .iter()
+            .map(|(k, vs)| ((*k).to_string(), vs.iter().map(|s| (*s).to_string()).collect()))
+            .collect()
+    }
+
+    #[test]
+    fn implicit_dep_named_feature_activates_dep() {
+        // Cargo 2021+: optional dep `foo` gets an implicit feature
+        // `foo`. If that feature is in the owner's enabled set, the
+        // dep is active.
+        let enabled = vec!["foo".to_string()];
+        let table = feature_table(&[]);
+        assert!(any_activator_enables_dep(&table, &enabled, "foo", "foo"));
+    }
+
+    #[test]
+    fn activator_via_enabled_feature_activates_dep() {
+        // Owner feature `extras` activates a dep via `dep:foo`;
+        // `extras` is enabled, so the dep is active.
+        let enabled = vec!["extras".to_string()];
+        let table = feature_table(&[("extras", &["dep:foo"])]);
+        assert!(any_activator_enables_dep(&table, &enabled, "foo", "foo"));
+    }
+
+    #[test]
+    fn inactive_feature_does_not_activate_dep() {
+        // `extras` is NOT enabled; the dep stays inactive.
+        let enabled: Vec<String> = Vec::new();
+        let table = feature_table(&[("extras", &["dep:foo"])]);
+        assert!(!any_activator_enables_dep(&table, &enabled, "foo", "foo"));
+    }
+
+    #[test]
+    fn weak_only_activation_does_not_enable_dep() {
+        // The only path from an enabled feature to the dep is via a
+        // weak activator; the dep stays inactive.
+        let enabled = vec!["sha1".to_string()];
+        let table = feature_table(&[("sha1", &["foo?/sha1"])]);
+        assert!(!any_activator_enables_dep(&table, &enabled, "foo", "foo"));
+    }
+
+    #[test]
+    fn strong_slash_activates_even_through_an_active_feature() {
+        // `sha1 = ["foo/feat-bar"]` activates the dep `foo` AND sets
+        // its `feat-bar` feature. `sha1` is enabled → dep is active.
+        let enabled = vec!["sha1".to_string()];
+        let table = feature_table(&[("sha1", &["foo/feat-bar"])]);
+        assert!(any_activator_enables_dep(&table, &enabled, "foo", "foo"));
+    }
+
+    #[test]
+    fn renamed_dep_activator_respects_alias() {
+        // `archive = ["dep:gix-archive-for-configuration-only"]`
+        // activating the alias for the renamed `gix-archive` dep.
+        let enabled = vec!["archive".to_string()];
+        let table = feature_table(&[("archive", &["dep:gix-archive-for-configuration-only"])]);
+        assert!(any_activator_enables_dep(
+            &table,
+            &enabled,
+            "gix-archive-for-configuration-only",
+            "gix-archive",
+        ));
+    }
+
+    #[test]
+    fn activator_for_other_dep_does_not_false_positive() {
+        let enabled = vec!["extras".to_string()];
+        let table = feature_table(&[("extras", &["dep:unrelated"])]);
+        assert!(!any_activator_enables_dep(&table, &enabled, "foo", "foo"));
+    }
+
+    #[test]
+    fn feature_table_missing_entry_is_not_a_panic() {
+        // An enabled-feature name that isn't in the table at all (can
+        // happen for workspace inheritance / implicit features) must
+        // not panic — just contribute no activation.
+        let enabled = vec!["phantom".to_string()];
+        let table = feature_table(&[]);
+        assert!(!any_activator_enables_dep(&table, &enabled, "foo", "foo"));
     }
 }

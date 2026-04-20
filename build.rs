@@ -361,57 +361,17 @@ fn reachable_from_root(
 /// `rename` or raw `name` seen in `owner.dependencies`) and whose
 /// package name is `raw_dep_name`.
 ///
-/// Walks `owner.features` looking for activator strings that reference
-/// the dep by either alias or package name — `"dep:foo"`, `"foo"`,
-/// and `"foo/bar"` all activate; `"foo?/bar"` is a weak activation
-/// and does *not* count on its own.
+/// Thin adapter that forwards `owner.features` (a
+/// `BTreeMap<String, Vec<String>>` in `cargo_metadata`'s `Package`
+/// struct) into [`build_support::any_activator_enables_dep`], which is
+/// unit-tested against the cargo activator grammar on the library side.
 fn optional_dep_activated(
     owner: &cargo_metadata::Package,
     owner_enabled: &[String],
     alias_name: &str,
     raw_dep_name: &str,
 ) -> bool {
-    // Cargo exposes an implicit feature for every optional dep (2021+
-    // edition): if the implicit feature is in `owner_enabled`, the dep
-    // is activated. The implicit feature name matches the dep's
-    // alias_name (the name users refer to in their Cargo.toml).
-    if owner_enabled.iter().any(|f| f == alias_name) {
-        return true;
-    }
-    for f in owner_enabled {
-        let Some(activators) = owner.features.get(f) else {
-            continue;
-        };
-        for a in activators {
-            if activator_enables_dep(a, alias_name, raw_dep_name) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Return `true` if the feature-activator string `a` activates the
-/// optional dep named `alias_name` (with underlying package name
-/// `raw_dep_name`). Mirrors cargo's edition-2021 activator syntax:
-///
-/// * `"dep:foo"` — enables optional dep `foo` (explicit, modern)
-/// * `"foo"` — enables optional dep `foo` (legacy compat)
-/// * `"foo/bar"` — enables optional dep `foo` *and* its feature `bar`
-/// * `"foo?/bar"` — WEAK: enables feature `bar` on `foo` only if `foo`
-///   is otherwise enabled. Does not by itself activate `foo`.
-fn activator_enables_dep(activator: &str, alias_name: &str, raw_dep_name: &str) -> bool {
-    let names = |s: &str| s == alias_name || s == raw_dep_name;
-    if let Some(rest) = activator.strip_prefix("dep:") {
-        return names(rest);
-    }
-    if activator.contains("?/") {
-        return false; // weak activator
-    }
-    if let Some((dep_part, _feat)) = activator.split_once('/') {
-        return names(dep_part);
-    }
-    names(activator)
+    build_support::any_activator_enables_dep(&owner.features, owner_enabled, alias_name, raw_dep_name)
 }
 
 fn enabled_top_level_features() -> Vec<String> {

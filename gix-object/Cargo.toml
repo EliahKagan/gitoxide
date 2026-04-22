@@ -59,7 +59,7 @@ bstr = { version = "1.12.0", default-features = false, features = [
     "std",
     "unicode",
 ] }
-winnow = { version = "1.0.0", features = ["simd"] }
+winnow = { version = "1.0.1", features = ["simd"] }
 smallvec = { version = "1.15.1", features = ["write"] }
 serde = { version = "1.0.114", optional = true, default-features = false, features = [
     "derive",
@@ -70,7 +70,7 @@ document-features = { version = "0.2.0", optional = true }
 [dev-dependencies]
 criterion = "0.8.2"
 pretty_assertions = "1.0.0"
-insta = "1.46.3"
+insta = "1.47.2"
 gix-testtools = { path = "../tests/tools" }
 gix-odb = { path = "../gix-odb" }
 gix-hash = { path = "../gix-hash", features = ["sha1", "sha256"] }

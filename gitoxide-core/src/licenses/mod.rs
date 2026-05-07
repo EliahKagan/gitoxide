@@ -45,9 +45,8 @@
 //!   surface is small and the crate is relatively young; pulling it in
 //!   would mean trusting an under-reviewed dependency with the legally
 //!   sensitive job of describing every other dependency's license. The
-//!   volume of code we'd have to write ourselves to achieve roughly the
-//!   same thing is about 200 lines of filesystem scanning and SPDX
-//!   expression splitting, which is what this module contains.
+//!   filesystem scanning and SPDX expression splitting we'd write
+//!   ourselves to achieve the same thing is what this module contains.
 //!
 //! * **[cargo-license] / [cargo-3pl] / [cargo-attribution]**. Report SPDX
 //!   identifiers and/or authors but not license text, or are insufficiently
@@ -59,11 +58,10 @@
 //! prerequisite on every person who runs `cargo install gitoxide`, the
 //! one library-based option is not yet mature enough for the role, and
 //! the rest do not emit license text at all. Writing the pipeline
-//! ourselves was a last resort, not a preference — it is roughly 200
-//! lines of filesystem scanning and SPDX expression splitting, which is
-//! small but still code we have to maintain. If any of the above tools
-//! gains a stable, widely-adopted build-time API in the future, migrating
-//! to it would be preferable.
+//! ourselves was a last resort, not a preference — filesystem scanning
+//! and SPDX expression splitting that we now have to maintain. If any
+//! of the above tools gains a stable, widely-adopted build-time API in
+//! the future, migrating to it would be preferable.
 //!
 //! [cargo-about]: https://github.com/EmbarkStudios/cargo-about
 //! [cargo-bundle-licenses]: https://github.com/sstadick/cargo-bundle-licenses

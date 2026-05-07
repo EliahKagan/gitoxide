@@ -106,11 +106,16 @@ impl CrateLicense {
 }
 
 impl Manifest {
-    /// Find a single crate by name. First match wins; when multiple versions
-    /// are present, pass the full crate list through [`Manifest::crates`] and
-    /// filter manually.
-    pub fn find(&self, name: &str) -> Option<&CrateLicense> {
-        self.crates.iter().find(|c| c.name == name)
+    /// Return every entry in [`Manifest::crates`] whose `name` matches.
+    ///
+    /// Most names resolve to a single entry. The Vec form makes the
+    /// multi-version case visible at the call site: if cargo resolved
+    /// two different versions of the same crate (each potentially under
+    /// a different license expression), both must be surfaced — silently
+    /// dropping all but the first would under-attribute the build.
+    /// Entries are returned in the order they appear in `crates`.
+    pub fn find_all(&self, name: &str) -> Vec<&CrateLicense> {
+        self.crates.iter().filter(|c| c.name == name).collect()
     }
 
     /// Return `true` if `name` is a workspace member whose attribution is
@@ -156,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_find_returns_match() {
+    fn manifest_find_all_returns_match() {
         let manifest = Manifest {
             crates: vec![sample_crate()],
             workspace_members_same_attribution: Vec::new(),
@@ -164,8 +169,39 @@ mod tests {
             feature_profile: Some("max".into()),
             target_triple: "aarch64-apple-darwin".into(),
         };
-        assert_eq!(manifest.find("sample").map(|c| c.version.as_str()), Some("1.2.3"));
-        assert!(manifest.find("missing").is_none());
+        let hits = manifest.find_all("sample");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].version, "1.2.3");
+        assert!(manifest.find_all("missing").is_empty());
+    }
+
+    /// When two entries in the manifest share a name (different versions,
+    /// possibly different licenses), `find_all` must surface all of them
+    /// in the order they appear in `crates`. The CLI relies on this so
+    /// that `gix licenses <name>` against an ambiguous name shows every
+    /// matching crate rather than silently dropping all but the first.
+    #[test]
+    fn manifest_find_all_returns_every_matching_version() {
+        let mut v1 = sample_crate();
+        v1.version = "1.0.0".into();
+        v1.spdx = Some("MIT".into());
+        let mut v2 = sample_crate();
+        v2.version = "2.0.0".into();
+        v2.spdx = Some("Apache-2.0".into());
+
+        let manifest = Manifest {
+            crates: vec![v1, v2],
+            workspace_members_same_attribution: Vec::new(),
+            generated_at: "t".into(),
+            feature_profile: None,
+            target_triple: "x86_64-unknown-linux-gnu".into(),
+        };
+        let hits = manifest.find_all("sample");
+        assert_eq!(hits.len(), 2, "expected both versions of `sample`");
+        assert_eq!(hits[0].version, "1.0.0");
+        assert_eq!(hits[1].version, "2.0.0");
+        assert_eq!(hits[0].spdx.as_deref(), Some("MIT"));
+        assert_eq!(hits[1].spdx.as_deref(), Some("Apache-2.0"));
     }
 
     #[test]

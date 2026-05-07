@@ -272,6 +272,44 @@ fn ein_and_gix_licenses_share_the_same_summary_surface() {
     assert_eq!(gix_third, ein_third, "third-party counts differ between gix and ein");
 }
 
+/// `gix` and `ein` share the entire `licenses::cli` dispatch and read the
+/// same embedded manifest, so for data-only invocations their stdout must
+/// be byte-identical. Stderr may differ (ein emits a progress-bar
+/// clear-line escape on shutdown, gix doesn't), but the user-facing data
+/// — be it the human summary, the full attribution, or the JSON manifest
+/// — is the same content for the same build.
+///
+/// This test is the byte-for-byte counterpart to
+/// [`ein_and_gix_licenses_share_the_same_summary_surface`], which only
+/// checks structural markers. Together they catch (a) divergence in the
+/// rendered text content and (b) divergence in which markers are present.
+#[test]
+fn ein_and_gix_licenses_produce_identical_stdout_for_data_invocations() {
+    let invocations: &[&[&str]] = &[
+        &[],                               // default summary
+        &["--verbose"],                    // verbose summary
+        &["--all"],                        // full attribution
+        &["--format", "json"],             // JSON manifest
+        &["--format", "json", "gitoxide"], // synthesized JSON entry
+        &["gitoxide"],                     // root-license human path
+        &["gix-sec"],                      // same-attribution workspace member
+    ];
+    for args in invocations {
+        let gix = run_licenses_raw(env!("CARGO_BIN_EXE_gix"), args);
+        let ein = run_licenses_raw(env!("CARGO_BIN_EXE_ein"), args);
+        assert!(gix.status.success(), "gix licenses {args:?} failed");
+        assert!(ein.status.success(), "ein licenses {args:?} failed");
+        assert_eq!(
+            gix.stdout,
+            ein.stdout,
+            "gix and ein produced different stdout for `licenses {args:?}` \
+             (gix={} bytes, ein={} bytes)",
+            gix.stdout.len(),
+            ein.stdout.len(),
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // `--all` end-to-end — never asserted on the real binary before. The unit
 // tests cover render_all against a hand-crafted fixture; this covers it

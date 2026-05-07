@@ -134,6 +134,7 @@ mod tests {
                 homepage: None,
                 files: vec![], // deliberately empty
                 used_spdx_fallback: false,
+                is_workspace_member: false,
             }],
             workspace_members_same_attribution: Vec::new(),
             generated_at: "test".into(),
@@ -251,6 +252,40 @@ mod tests {
             !names.contains("gitoxide"),
             "root package `gitoxide` must not appear in its own manifest",
         );
+    }
+
+    /// The per-entry `is_workspace_member` flag must distinguish gitoxide
+    /// workspace members from third-party crates in the embedded manifest.
+    /// This is the typed indicator the renderer relies on to split the
+    /// summary into "third-party" vs "workspace member with separate
+    /// attribution"; if the flag is wrong, the rendered output groups
+    /// crates incorrectly even though every name still appears.
+    #[test]
+    fn is_workspace_member_flag_distinguishes_workspace_from_third_party() {
+        let manifest = load().expect("load manifest");
+        let by_name: std::collections::BTreeMap<&str, bool> = manifest
+            .crates
+            .iter()
+            .map(|c| (c.name.as_str(), c.is_workspace_member))
+            .collect();
+
+        // Workspace members with separate attribution must have the flag set.
+        for ws in ["gix-imara-diff", "gix-config"] {
+            match by_name.get(ws) {
+                Some(true) => {}
+                Some(false) => panic!("workspace member `{ws}` has is_workspace_member=false"),
+                None => panic!("workspace member `{ws}` is missing from manifest"),
+            }
+        }
+
+        // True third-party crates must NOT have the flag set.
+        for tp in ["anyhow", "memchr"] {
+            match by_name.get(tp) {
+                Some(false) => {}
+                Some(true) => panic!("third-party crate `{tp}` has is_workspace_member=true"),
+                None => panic!("third-party crate `{tp}` is missing from manifest"),
+            }
+        }
     }
 
     /// Dev-only workspace and third-party crates must never appear in

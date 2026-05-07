@@ -181,7 +181,13 @@ fn collect_manifest() -> Result<Manifest, String> {
     // The reachability gate ensures dev-only transitive crates (e.g.
     // `gix-testtools`, which is in `[dev-dependencies]` of most `gix-*`
     // crates but never linked into the binary) never appear.
-    let mut to_attribute: Vec<&cargo_metadata::Package> = Vec::new();
+    // Each entry records both the package and whether it is a workspace
+    // member (`true`) or a third-party crate (`false`). This is the
+    // workspace-membership signal that propagates to `CrateLicense::is_workspace_member`
+    // in the rendered manifest, so that downstream consumers can group
+    // attribution into "third-party" vs "workspace member with separate
+    // attribution" without having to consult cargo metadata at runtime.
+    let mut to_attribute: Vec<(&cargo_metadata::Package, bool)> = Vec::new();
     let mut same_attribution_ws: Vec<String> = Vec::new();
 
     for p in &metadata.packages {
@@ -198,19 +204,22 @@ fn collect_manifest() -> Result<Manifest, String> {
                 root_pkg.license.as_deref(),
                 &root_pkg.authors,
             ) {
-                to_attribute.push(p);
+                to_attribute.push((p, true));
             } else {
                 same_attribution_ws.push(p.name.to_string());
             }
         } else if p.source.is_some() {
-            to_attribute.push(p);
+            to_attribute.push((p, false));
         }
     }
-    to_attribute.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
+    to_attribute.sort_by(|(a, _), (b, _)| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
     same_attribution_ws.sort();
     same_attribution_ws.dedup();
 
-    let crates: Vec<CrateLicense> = to_attribute.into_iter().map(build_crate_entry).collect();
+    let crates: Vec<CrateLicense> = to_attribute
+        .into_iter()
+        .map(|(p, is_workspace_member)| build_crate_entry(p, is_workspace_member))
+        .collect();
 
     Ok(Manifest {
         crates,
@@ -224,7 +233,7 @@ fn collect_manifest() -> Result<Manifest, String> {
 /// Build a [`CrateLicense`] entry for one third-party dependency, discovering
 /// license text from the crate's source tree and falling back to bundled
 /// canonical SPDX text only when nothing else is available.
-fn build_crate_entry(p: &cargo_metadata::Package) -> CrateLicense {
+fn build_crate_entry(p: &cargo_metadata::Package, is_workspace_member: bool) -> CrateLicense {
     // `manifest_path` is a `camino::Utf8PathBuf`; `as_std_path` borrows a
     // regular `&Path` without allocating, which is what `collect_crate_license_files` wants.
     let files_from_source = p
@@ -252,6 +261,7 @@ fn build_crate_entry(p: &cargo_metadata::Package) -> CrateLicense {
         homepage: p.homepage.clone(),
         files,
         used_spdx_fallback,
+        is_workspace_member,
     }
 }
 

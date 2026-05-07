@@ -3,7 +3,7 @@
 //! The data model, renderers, SPDX fallback table, and build-time helpers
 //! live in `gitoxide_core::licenses` — this module only owns the pieces
 //! that are tied to *this* binary: the compressed JSON blob that
-//! `build.rs` embeds via `include_bytes!`, its deserialisation into a
+//! `build.rs` embeds via `include_bytes!`, its deserialization into a
 //! [`Manifest`], and the CLI dispatcher that backs `gix licenses` and
 //! `ein licenses`.
 //!

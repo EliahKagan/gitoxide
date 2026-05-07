@@ -157,3 +157,58 @@ fn summary_footer_appears_after_all_sections() {
         "footer guidance must come after every section header:\n{out}"
     );
 }
+
+/// The summary's notes column must not carry the verbose pre-footnote
+/// phrasing ("bundled SPDX fallback", "no license text available").
+/// Compact `[*]`/`[!]` marks plus a legend is the new contract.
+#[test]
+fn summary_notes_column_uses_footnote_marks_not_verbose_phrases() {
+    let out = run_gix_licenses(&[]);
+    assert!(
+        !out.contains("bundled SPDX fallback"),
+        "verbose SPDX-fallback prose must not appear in the summary table:\n{out}"
+    );
+    assert!(
+        !out.contains("no license text available"),
+        "verbose missing-text prose must not appear in the summary table:\n{out}"
+    );
+}
+
+/// Whenever a footnote mark (`[*]` or `[!]`) appears in the summary, a
+/// legend defining what that mark means must also appear — and the legend
+/// must precede the footer guidance so that the help text remains the
+/// last thing on screen.
+///
+/// When neither mark is present in the actual built manifest (likely the
+/// common case), the legend is omitted and this assertion holds
+/// vacuously. Either way, the output must be self-explanatory.
+#[test]
+fn legend_accompanies_any_footnote_mark_used_and_precedes_footer() {
+    let out = run_gix_licenses(&[]);
+    let footer_pos = out
+        .find("Use `gix licenses <CRATE>`")
+        .unwrap_or_else(|| panic!("summary should include footer guidance:\n{out}"));
+    // Slice the body that precedes the footer; mark and legend both have
+    // to live in this region.
+    let head = &out[..footer_pos];
+
+    if head.contains("[*]") {
+        assert!(
+            head.lines().any(|l| {
+                let t = l.trim_start();
+                t.starts_with("[*]") && (t.to_lowercase().contains("spdx") || t.to_lowercase().contains("bundled"))
+            }),
+            "[*] mark used but no legend line explaining it (above footer):\n{head}"
+        );
+    }
+    if head.contains("[!]") {
+        assert!(
+            head.lines().any(|l| {
+                let t = l.trim_start();
+                t.starts_with("[!]")
+                    && (t.to_lowercase().contains("no license text") || t.to_lowercase().contains("missing"))
+            }),
+            "[!] mark used but no legend line explaining it (above footer):\n{head}"
+        );
+    }
+}

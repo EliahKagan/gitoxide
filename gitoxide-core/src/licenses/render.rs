@@ -45,6 +45,32 @@ fn write_header(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Resul
     Ok(())
 }
 
+/// Footnote mark for a crate whose license text was sourced from a bundled
+/// canonical SPDX copy because no LICENSE/COPYING/NOTICE file was present in
+/// the crate source. Defined explicitly so the table-cell writer and the
+/// legend writer cannot drift.
+const SPDX_FALLBACK_MARK: &str = "[*]";
+/// Footnote mark for a crate that has no license text at all — neither a
+/// discovered file nor a bundled SPDX fallback.
+const MISSING_TEXT_MARK: &str = "[!]";
+
+/// Compact footnote string for the notes column of a single row. Combines
+/// applicable marks with a space separator. Returns an empty string when
+/// the crate carries no marks at all.
+fn marks_for(c: &CrateLicense) -> String {
+    let mut s = String::new();
+    if c.used_spdx_fallback {
+        s.push_str(SPDX_FALLBACK_MARK);
+    }
+    if c.is_missing_text() {
+        if !s.is_empty() {
+            s.push(' ');
+        }
+        s.push_str(MISSING_TEXT_MARK);
+    }
+    s
+}
+
 /// Write a column-aligned table for one of the per-section crate slices in
 /// the summary view. Column widths are computed from the slice itself so each
 /// section aligns within itself; this keeps the third-party section's name
@@ -80,20 +106,40 @@ fn write_summary_table(w: &mut (impl Write + ?Sized), crates: &[&CrateLicense]) 
 
     for c in crates {
         let spdx = c.spdx.as_deref().unwrap_or("(none)");
-        let mut notes = Vec::new();
-        if c.used_spdx_fallback {
-            notes.push("bundled SPDX fallback");
-        }
-        if c.is_missing_text() {
-            notes.push("no license text available");
-        }
         writeln!(
             w,
             "{name:<name_width$}  {version:<version_width$}  {spdx:<spdx_width$}  {notes}",
             name = c.name,
             version = c.version,
             spdx = spdx,
-            notes = notes.join(", "),
+            notes = marks_for(c),
+        )?;
+    }
+    Ok(())
+}
+
+/// Write a legend explaining any footnote marks that appeared in the data
+/// tables, gated on whether each mark was actually used. When no crate in
+/// the manifest carries any mark, the entire legend is skipped — there is
+/// nothing to explain.
+fn write_legend(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
+    let any_spdx_fallback = manifest.crates.iter().any(|c| c.used_spdx_fallback);
+    let any_missing_text = manifest.crates.iter().any(CrateLicense::is_missing_text);
+    if !any_spdx_fallback && !any_missing_text {
+        return Ok(());
+    }
+    writeln!(w)?;
+    if any_spdx_fallback {
+        writeln!(
+            w,
+            "{SPDX_FALLBACK_MARK} license text was sourced from a bundled canonical SPDX copy \
+             (the crate's source had no LICENSE/COPYING/NOTICE file)"
+        )?;
+    }
+    if any_missing_text {
+        writeln!(
+            w,
+            "{MISSING_TEXT_MARK} no license text available — neither a discovered file nor a bundled SPDX fallback applied"
         )?;
     }
     Ok(())
@@ -173,6 +219,7 @@ pub fn render_summary_with_options(
     if opts.verbose {
         write_same_attribution_workspace_section(w, manifest)?;
     }
+    write_legend(w, manifest)?;
 
     writeln!(w)?;
     writeln!(
@@ -447,6 +494,10 @@ mod tests {
         assert!(out.contains("gix-imara-diff"));
     }
 
+    /// The notes column uses footnote-style marks (`[!]` for missing
+    /// license text) rather than full-prose phrases, so the table stays
+    /// compact even when many crates carry notes. Wide prose pushed the
+    /// LICENSE column off-screen on standard 80-column terminals.
     #[test]
     fn summary_marks_crates_with_no_license_text() {
         let out = render_to_string(&sample_manifest(), render_summary);
@@ -454,14 +505,168 @@ mod tests {
             .lines()
             .find(|l| l.starts_with("mpl-example"))
             .expect("mpl-example row");
-        assert!(mpl_line.contains("no license text available"));
+        assert!(
+            mpl_line.contains("[!]"),
+            "missing-text row should carry the [!] mark:\n{mpl_line}"
+        );
+        assert!(
+            !mpl_line.contains("no license text available"),
+            "footnote-style mark should replace literal text in the notes column:\n{mpl_line}"
+        );
     }
 
+    /// Crates with both their license file present and no SPDX fallback
+    /// carry no marks in the notes column at all.
     #[test]
     fn summary_does_not_mark_present_license() {
         let out = render_to_string(&sample_manifest(), render_summary);
         let anyhow_line = out.lines().find(|l| l.starts_with("anyhow")).expect("anyhow row");
-        assert!(!anyhow_line.contains("no license text available"));
+        assert!(
+            !anyhow_line.contains("[!]"),
+            "fully-attributed row should not carry the [!] mark:\n{anyhow_line}"
+        );
+        assert!(
+            !anyhow_line.contains("[*]"),
+            "row without an SPDX fallback should not carry the [*] mark:\n{anyhow_line}"
+        );
+    }
+
+    /// SPDX-fallback crates are marked with `[*]` in the notes column. The
+    /// canonical bundled text is what the per-crate view shows, but in the
+    /// summary view a compact mark conveys the same diagnostic without
+    /// stretching the table.
+    #[test]
+    fn summary_marks_spdx_fallback_with_asterisk() {
+        let mut manifest = sample_manifest();
+        // anyhow already has license text; here we hand-flag it as having
+        // come from the SPDX fallback so the [*] codepath fires regardless
+        // of the file-presence heuristic.
+        manifest.crates[0].used_spdx_fallback = true;
+        let out = render_to_string(&manifest, render_summary);
+        let anyhow_line = out.lines().find(|l| l.starts_with("anyhow")).expect("anyhow row");
+        assert!(
+            anyhow_line.contains("[*]"),
+            "SPDX-fallback row should carry the [*] mark:\n{anyhow_line}"
+        );
+        assert!(
+            !anyhow_line.contains("bundled SPDX fallback"),
+            "footnote-style mark should replace literal text in the notes column:\n{anyhow_line}"
+        );
+    }
+
+    /// When at least one crate carries a footnote mark, the summary
+    /// includes a legend block explaining what the marks mean. The legend
+    /// avoids forcing readers to guess at `[*]`/`[!]` semantics on first
+    /// encounter.
+    #[test]
+    fn summary_includes_legend_for_marks_in_use() {
+        let mut manifest = sample_manifest();
+        manifest.crates[0].used_spdx_fallback = true;
+        let out = render_to_string(&manifest, render_summary);
+        // The legend's [*] line introduces the SPDX-fallback meaning.
+        let star_legend_pos = out
+            .lines()
+            .position(|l| l.trim_start().starts_with("[*]"))
+            .unwrap_or_else(|| panic!("legend should explain [*]:\n{out}"));
+        let bang_legend_pos = out
+            .lines()
+            .position(|l| l.trim_start().starts_with("[!]"))
+            .unwrap_or_else(|| panic!("legend should explain [!]:\n{out}"));
+        // Both legend lines should mention the diagnostic concept they
+        // stand for so a reader can interpret the marks without deeper
+        // documentation.
+        let legend = out
+            .lines()
+            .skip(star_legend_pos.min(bang_legend_pos))
+            .take(2 + (star_legend_pos.max(bang_legend_pos) - star_legend_pos.min(bang_legend_pos)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            legend.to_lowercase().contains("spdx") || legend.to_lowercase().contains("bundled"),
+            "[*] legend line should mention SPDX/bundled:\n{legend}"
+        );
+        assert!(
+            legend.to_lowercase().contains("no license text") || legend.to_lowercase().contains("missing"),
+            "[!] legend line should mention missing/no license text:\n{legend}"
+        );
+    }
+
+    /// When no crate carries any mark, the legend block is omitted to
+    /// avoid clutter. There is nothing for the legend to explain.
+    #[test]
+    fn summary_omits_legend_when_no_marks_used() {
+        let manifest = Manifest {
+            crates: vec![CrateLicense {
+                name: "all-good".into(),
+                version: "1.0.0".into(),
+                spdx: Some("MIT".into()),
+                authors: vec![],
+                repository: None,
+                homepage: None,
+                files: vec![LicenseFile {
+                    name: "LICENSE-MIT".into(),
+                    text: "MIT body\n".into(),
+                }],
+                used_spdx_fallback: false,
+                is_workspace_member: false,
+            }],
+            workspace_members_same_attribution: vec![],
+            generated_at: "t".into(),
+            feature_profile: None,
+            target_triple: "x86_64-unknown-linux-gnu".into(),
+        };
+        let out = render_to_string(&manifest, render_summary);
+        assert!(
+            !out.contains("[*]"),
+            "no [*] mark should appear when no crate has the SPDX fallback:\n{out}"
+        );
+        assert!(
+            !out.contains("[!]"),
+            "no [!] mark should appear when every crate has license text:\n{out}"
+        );
+    }
+
+    /// The legend appears after the data tables but BEFORE the footer
+    /// guidance ("Use `gix licenses <CRATE>` …"), so the help text
+    /// remains the very last thing on screen as the user requested.
+    #[test]
+    fn legend_appears_above_footer_guidance() {
+        let mut manifest = sample_manifest();
+        manifest.crates[0].used_spdx_fallback = true;
+        let out = render_to_string(&manifest, render_summary);
+        let legend_pos = out
+            .find("[*]")
+            .unwrap_or_else(|| panic!("legend should be present:\n{out}"));
+        let footer_pos = out
+            .find("Use `gix licenses <CRATE>`")
+            .unwrap_or_else(|| panic!("footer should be present:\n{out}"));
+        assert!(
+            legend_pos < footer_pos,
+            "legend should precede the footer guidance:\n{out}"
+        );
+    }
+
+    /// The legend scans every section's crates: a footnote mark on a
+    /// workspace-with-separate-attribution crate should still surface the
+    /// legend even if no third-party crate uses any mark.
+    #[test]
+    fn legend_fires_for_marks_in_workspace_section_too() {
+        let mut manifest = sample_manifest();
+        // Clear the third-party flag and only flag the workspace member.
+        for c in &mut manifest.crates {
+            c.used_spdx_fallback = false;
+        }
+        let workspace_idx = manifest
+            .crates
+            .iter()
+            .position(|c| c.is_workspace_member)
+            .expect("sample manifest has a workspace member");
+        manifest.crates[workspace_idx].used_spdx_fallback = true;
+        let out = render_to_string(&manifest, render_summary);
+        assert!(
+            out.contains("[*]"),
+            "workspace-section mark should still trigger the legend:\n{out}"
+        );
     }
 
     #[test]

@@ -16,11 +16,14 @@ use super::embedded;
     about = "Show license and attribution for third-party dependencies linked into this binary",
     long_about = "Show license, copyright, attribution, and notice information for every \
                   third-party dependency statically linked into this binary.\n\n\
-                  With no arguments, prints a summary table. With a single crate name, \
-                  prints that crate's full attribution. With `--all`, prints the full \
-                  concatenated attribution for every dependency, byte-identical to the \
-                  `THIRD-PARTY-LICENSES.txt` file shipped alongside the binary in release \
-                  archives."
+                  With no arguments, prints a summary table covering third-party crates \
+                  and gitoxide's own workspace members that need their own attribution. \
+                  Pass `--verbose` to also list workspace members whose license and \
+                  authorship match the root `gitoxide` package's. With a single crate \
+                  name, prints that crate's full attribution. With `--all`, prints the \
+                  full concatenated attribution for every dependency, byte-identical to \
+                  the `THIRD-PARTY-LICENSES.txt` file shipped alongside the binary in \
+                  release archives."
 )]
 pub struct Command {
     /// The name of a single third-party crate whose full attribution should
@@ -34,6 +37,12 @@ pub struct Command {
     /// release archive.
     #[clap(long)]
     pub all: bool,
+    /// In the default summary view, also list workspace members whose
+    /// license and authorship match the root `gitoxide` package's. Has no
+    /// effect when `--all` is set (the full attribution always includes
+    /// that listing) or when a crate name argument is given.
+    #[clap(long, short = 'v')]
+    pub verbose: bool,
     /// Override the output format for this subcommand specifically.
     ///
     /// When unset, the format is inherited from the binary's top-level
@@ -66,13 +75,14 @@ pub fn run(out: &mut dyn Write, inherited_format: OutputFormat, args: Command) -
     match (args.all, args.crate_name.as_deref()) {
         (true, _) => render_full_text(out),
         (false, Some(name)) => render_one_crate(out, name),
-        (false, None) => render_summary_table(out),
+        (false, None) => render_summary_table(out, args.verbose),
     }
 }
 
-fn render_summary_table(out: &mut dyn Write) -> Result<()> {
+fn render_summary_table(out: &mut dyn Write, verbose: bool) -> Result<()> {
     let manifest = embedded::load().context("decoding embedded license manifest")?;
-    render::render_summary(out, &manifest).context("rendering license summary")?;
+    render::render_summary_with_options(out, &manifest, render::SummaryOptions { verbose })
+        .context("rendering license summary")?;
     Ok(())
 }
 

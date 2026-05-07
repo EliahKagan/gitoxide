@@ -125,6 +125,19 @@ impl Manifest {
     pub fn is_same_attribution_workspace_member(&self, name: &str) -> bool {
         self.workspace_members_same_attribution.iter().any(|n| n == name)
     }
+
+    /// Return `true` if `name` is the root `gitoxide` package or a workspace
+    /// member whose attribution matches the root's. Both are conceptually
+    /// "covered by gitoxide's LICENSE-MIT / LICENSE-APACHE files" and the
+    /// renderer treats them uniformly: it prints the actual root license
+    /// text rather than a mere pointer to the files. Crates that have their
+    /// own attribution entry in [`Manifest::crates`] (third-party or
+    /// workspace-with-separate-attribution) are NOT included here — they
+    /// have their own license text and are looked up via
+    /// [`Manifest::find_all`].
+    pub fn is_covered_by_root_license(&self, name: &str) -> bool {
+        name == "gitoxide" || self.is_same_attribution_workspace_member(name)
+    }
 }
 
 #[cfg(test)]

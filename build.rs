@@ -450,7 +450,7 @@ fn write_manifest(out_dir: &Path, manifest: &Manifest) -> std::io::Result<()> {
 /// Emit a minimal manifest used only when the real one fails to generate.
 /// It must still produce valid JSON/text that `include_str!` can consume, so
 /// the runtime subcommand can tell users the situation plainly instead of
-/// panicking on deserialisation.
+/// panicking on deserialization.
 fn emit_stub_manifest(err: &str) -> std::io::Result<()> {
     let out_dir = out_dir().map_err(std::io::Error::other)?;
     let manifest = Manifest {

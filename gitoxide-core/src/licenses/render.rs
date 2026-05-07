@@ -351,7 +351,7 @@ fn write_root_license_attribution(w: &mut (impl Write + ?Sized), name: &str) -> 
 ///    matching entry. The single-match case is the per-crate attribution
 ///    by itself; the multi-match case (cargo resolved multiple versions
 ///    of the same crate, possibly under different licenses) prints every
-///    matching version separated by [`CRATE_DIVIDER`], with a header
+///    matching version separated by a divider, with a header
 ///    announcing the multi-version case so a reader does not mistake the
 ///    output for duplicated rendering.
 /// 2. If the name is the root `gitoxide` package or a same-attribution

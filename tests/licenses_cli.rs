@@ -92,7 +92,7 @@ fn verbose_summary_includes_same_attribution_section() {
 fn short_verbose_flag_matches_long_form() {
     let long = run_gix_licenses(&["--verbose"]);
     let short = run_gix_licenses(&["-v"]);
-    assert_eq!(long, short, "`-v` and `--verbose` should produce byte-identical output",);
+    assert_eq!(long, short, "`-v` and `--verbose` should produce byte-identical output");
 }
 
 /// `gix licenses --all` always includes every section, regardless of

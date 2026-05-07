@@ -102,6 +102,14 @@ impl Manifest {
     pub fn find(&self, name: &str) -> Option<&CrateLicense> {
         self.crates.iter().find(|c| c.name == name)
     }
+
+    /// Return `true` if `name` is a workspace member whose attribution is
+    /// identical to the root `gitoxide` package's — i.e. it appears in
+    /// [`Manifest::workspace_members_same_attribution`] rather than in
+    /// [`Manifest::crates`].
+    pub fn is_same_attribution_workspace_member(&self, name: &str) -> bool {
+        self.workspace_members_same_attribution.iter().any(|n| n == name)
+    }
 }
 
 #[cfg(test)]

@@ -105,7 +105,7 @@ fn emit_single_crate_json(out: &mut dyn Write, name: &str) -> Result<()> {
         writeln!(out)?;
         return Ok(());
     }
-    if manifest.workspace_members_same_attribution.iter().any(|n| n == name) {
+    if manifest.is_same_attribution_workspace_member(name) {
         // Same-attribution workspace members aren't carried as full
         // `CrateLicense` entries — their license is `gitoxide`'s own.
         // Emit a compact JSON note so machine consumers can tell this

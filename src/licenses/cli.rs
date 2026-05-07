@@ -125,24 +125,51 @@ fn emit_single_crate_json_against(
         writeln!(out)?;
         return Ok(());
     }
-    if manifest.is_same_attribution_workspace_member(name) {
-        // Same-attribution workspace members aren't carried as full
-        // `CrateLicense` entries — their license is `gitoxide`'s own.
-        // Emit a compact JSON note so machine consumers can tell this
-        // case apart from "not found".
-        let note = serde_json::json!({
-            "name": name,
-            "kind": "workspace-member-same-attribution",
-            "note": "Workspace member with attribution identical to `gitoxide`. Refer to \
-                     LICENSE-MIT and LICENSE-APACHE at the root of the gitoxide source tree \
-                     or release archive.",
-        });
-        serde_json::to_writer(&mut *out, &note)
-            .with_context(|| format!("encoding same-attribution entry for `{name}` as JSON"))?;
+    if manifest.is_covered_by_root_license(name) {
+        // Synthesize a `CrateLicense` carrying the actual gitoxide root
+        // license text (MIT and Apache-2.0). This keeps the JSON shape
+        // consistent with the third-party / workspace-member cases — a
+        // typed consumer can parse the same `CrateLicense` array shape
+        // for any name — while supplying real attribution content
+        // instead of a pointer-to-files note.
+        let synthesized = synthesized_root_entry(name);
+        serde_json::to_writer(&mut *out, &[synthesized])
+            .with_context(|| format!("encoding root-license attribution for `{name}` as JSON"))?;
         writeln!(out)?;
         return Ok(());
     }
     anyhow::bail!("no dependency named `{name}` in the manifest")
+}
+
+/// Build a synthesized [`CrateLicense`] entry for the root-license case
+/// (the root `gitoxide` package itself, or a workspace member whose
+/// attribution matches the root). Carries the actual MIT and Apache-2.0
+/// file contents from the repository's top-level files. Fields we don't
+/// have a concrete value for (version, repository, homepage, authors)
+/// are left empty/None — consumers who need them can look them up
+/// against the rest of the manifest or against cargo metadata.
+fn synthesized_root_entry(name: &str) -> gitoxide_core::licenses::CrateLicense {
+    use gitoxide_core::licenses::{CrateLicense, LicenseFile, spdx_texts};
+    CrateLicense {
+        name: name.to_string(),
+        version: String::new(),
+        spdx: Some("MIT OR Apache-2.0".to_string()),
+        authors: Vec::new(),
+        repository: None,
+        homepage: None,
+        files: vec![
+            LicenseFile {
+                name: "LICENSE-MIT".to_string(),
+                text: spdx_texts::MIT.to_string(),
+            },
+            LicenseFile {
+                name: "LICENSE-APACHE".to_string(),
+                text: spdx_texts::APACHE_2_0.to_string(),
+            },
+        ],
+        used_spdx_fallback: false,
+        is_workspace_member: name != "gitoxide",
+    }
 }
 
 #[cfg(test)]
@@ -227,5 +254,72 @@ mod tests {
             err.to_string().contains("nonexistent"),
             "error must name the missing crate"
         );
+    }
+
+    /// `gix licenses --format json gix-sec` (a same-attribution workspace
+    /// member) should emit a JSON array containing a synthesized entry
+    /// with the actual MIT and Apache-2.0 license file contents. This
+    /// gives JSON consumers the real attribution data they need, in the
+    /// same shape they'd get for a third-party crate.
+    #[test]
+    fn same_attribution_workspace_member_emits_synthesized_entry_with_real_text() {
+        let manifest = manifest_with(vec![], vec!["gix-sec".into()]);
+        let mut buf = Vec::new();
+        emit_single_crate_json_against(&mut buf, &manifest, "gix-sec").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&s).expect("output must be valid JSON");
+        let arr = parsed.as_array().expect("output must be a JSON array");
+        assert_eq!(arr.len(), 1, "expected exactly one synthesized entry");
+        let entry = &arr[0];
+        assert_eq!(entry["name"], "gix-sec");
+        assert_eq!(entry["spdx"], "MIT OR Apache-2.0");
+        assert_eq!(entry["is_workspace_member"], true);
+        let files = entry["files"].as_array().expect("files must be a JSON array");
+        assert_eq!(files.len(), 2, "should include both LICENSE-MIT and LICENSE-APACHE");
+        let names: Vec<&str> = files.iter().map(|f| f["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"LICENSE-MIT"));
+        assert!(names.contains(&"LICENSE-APACHE"));
+        // Each file must contain its actual canonical text body, not a placeholder.
+        let mit_text = files
+            .iter()
+            .find(|f| f["name"] == "LICENSE-MIT")
+            .map(|f| f["text"].as_str().unwrap())
+            .unwrap();
+        assert!(
+            mit_text.contains("Permission is hereby granted"),
+            "MIT body must be the canonical text"
+        );
+        let apache_text = files
+            .iter()
+            .find(|f| f["name"] == "LICENSE-APACHE")
+            .map(|f| f["text"].as_str().unwrap())
+            .unwrap();
+        assert!(
+            apache_text.contains("Apache License") && apache_text.contains("Version 2.0"),
+            "Apache-2.0 body must be the canonical text"
+        );
+    }
+
+    /// `gix licenses --format json gitoxide` should also work (the root
+    /// package isn't in the manifest's `crates` list but is queryable),
+    /// and the synthesized entry must mark it as the root rather than a
+    /// workspace member.
+    #[test]
+    fn gitoxide_root_emits_synthesized_entry_marked_as_non_workspace_member() {
+        let manifest = manifest_with(vec![], vec![]);
+        let mut buf = Vec::new();
+        emit_single_crate_json_against(&mut buf, &manifest, "gitoxide").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&s).expect("output must be valid JSON");
+        let arr = parsed.as_array().expect("output must be a JSON array");
+        assert_eq!(arr.len(), 1);
+        let entry = &arr[0];
+        assert_eq!(entry["name"], "gitoxide");
+        assert_eq!(
+            entry["is_workspace_member"], false,
+            "the root package itself must not be flagged as a workspace member"
+        );
+        let files = entry["files"].as_array().unwrap();
+        assert_eq!(files.len(), 2);
     }
 }

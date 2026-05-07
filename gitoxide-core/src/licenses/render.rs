@@ -24,6 +24,7 @@
 
 use std::io::{self, Write};
 
+use super::spdx_texts;
 use super::types::{CrateLicense, Manifest};
 
 const CRATE_DIVIDER: &str = "================================================================";
@@ -209,36 +210,71 @@ fn write_crate(w: &mut (impl Write + ?Sized), c: &CrateLicense) -> io::Result<()
     Ok(())
 }
 
+/// Write the full root-license attribution for `name` — used both for
+/// `name == "gitoxide"` (the root package itself) and for any same-
+/// attribution workspace member, since both are covered by the same
+/// LICENSE-MIT and LICENSE-APACHE files at the repository root.
+///
+/// The actual file contents come from [`spdx_texts::MIT`] and
+/// [`spdx_texts::APACHE_2_0`], which `include_str!` the repository's
+/// top-level files at compile time.
+fn write_root_license_attribution(w: &mut (impl Write + ?Sized), name: &str) -> io::Result<()> {
+    writeln!(w, "{name}")?;
+    if name == "gitoxide" {
+        writeln!(w, "License files for the gitoxide root package:")?;
+    } else {
+        writeln!(
+            w,
+            "Workspace member with license and authorship identical to the root `gitoxide` package.",
+        )?;
+        writeln!(
+            w,
+            "Covered by the gitoxide repository's LICENSE-MIT and LICENSE-APACHE files (shown below):"
+        )?;
+    }
+    writeln!(w)?;
+
+    let files: [(&str, &str); 2] = [
+        ("LICENSE-MIT", spdx_texts::MIT),
+        ("LICENSE-APACHE", spdx_texts::APACHE_2_0),
+    ];
+    for (i, (filename, body)) in files.iter().enumerate() {
+        if i > 0 {
+            writeln!(w, "{FILE_DIVIDER}")?;
+        }
+        writeln!(w, "-- {filename} --")?;
+        writeln!(w)?;
+        w.write_all(body.as_bytes())?;
+        if !body.ends_with('\n') {
+            writeln!(w)?;
+        }
+    }
+    Ok(())
+}
+
 /// Render the full attribution for every entry whose name matches.
 ///
-/// Most names resolve to a single crate, in which case the output is the
-/// per-crate attribution by itself. When cargo resolved multiple versions
-/// of the same crate (e.g. `crate-x v1` under MIT and `crate-x v2` under
-/// Apache-2.0 in the same build), every matching version is printed in
-/// turn, separated by [`CRATE_DIVIDER`], with a header announcing the
-/// multi-version case so a reader does not mistake the output for
-/// duplicated rendering of one crate.
+/// Resolution order:
 ///
-/// Falls through to the same-attribution-workspace-member path if no
-/// `crates` entry matches but the name is in
-/// [`Manifest::workspace_members_same_attribution`]. Otherwise returns
-/// [`io::ErrorKind::NotFound`].
+/// 1. If [`Manifest::find_all`] returns one or more matches, write each
+///    matching entry. The single-match case is the per-crate attribution
+///    by itself; the multi-match case (cargo resolved multiple versions
+///    of the same crate, possibly under different licenses) prints every
+///    matching version separated by [`CRATE_DIVIDER`], with a header
+///    announcing the multi-version case so a reader does not mistake the
+///    output for duplicated rendering.
+/// 2. If the name is the root `gitoxide` package or a same-attribution
+///    workspace member (per [`Manifest::is_covered_by_root_license`]),
+///    write the gitoxide-root license attribution: the actual MIT and
+///    Apache-2.0 text, plus a one-line note explaining that the named
+///    crate is covered by these files.
+/// 3. Otherwise return [`io::ErrorKind::NotFound`].
 pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &str) -> io::Result<()> {
     let hits = manifest.find_all(name);
     match hits.len() {
         0 => {
-            if manifest.is_same_attribution_workspace_member(name) {
-                writeln!(w, "{name}")?;
-                writeln!(w, "Workspace member with attribution identical to `gitoxide`.")?;
-                writeln!(
-                    w,
-                    "License, copyright, and attribution are covered by the LICENSE-MIT and",
-                )?;
-                writeln!(
-                    w,
-                    "LICENSE-APACHE files at the root of the gitoxide source tree and release archive.",
-                )?;
-                return Ok(());
+            if manifest.is_covered_by_root_license(name) {
+                return write_root_license_attribution(w, name);
             }
             Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -498,20 +534,59 @@ mod tests {
         );
     }
 
+    /// Same-attribution workspace members must show the actual MIT and
+    /// Apache-2.0 license text from the gitoxide repository root, not just
+    /// a pointer to the files. A reader running `gix licenses gix-sec`
+    /// should be able to read the licenses without leaving the binary.
     #[test]
-    fn render_crate_finds_same_attribution_workspace_member() {
+    fn render_crate_for_same_attribution_includes_real_license_text() {
         let manifest = sample_manifest();
         let mut buf = Vec::new();
         render_crate(&mut buf, &manifest, "gix-alpha").expect("same-attribution ws member must render");
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.contains("gix-alpha"), "output should name the crate");
+
+        assert!(s.contains("gix-alpha"), "output should name the crate:\n{s}");
+
+        // Canonical MIT permission clause body — distinguishes the actual
+        // LICENSE-MIT contents from a mere pointer at it.
         assert!(
-            s.contains("identical to `gitoxide`"),
-            "output should note the identical-attribution case:\n{s}",
+            s.contains("Permission is hereby granted"),
+            "MIT license body should appear inline:\n{s}"
+        );
+        // Canonical Apache-2.0 marker.
+        assert!(
+            s.contains("Apache License") && s.contains("Version 2.0"),
+            "Apache-2.0 license body should appear inline:\n{s}"
+        );
+
+        // The output should still be labeled as the root-license case so a
+        // reader knows why these files apply.
+        assert!(
+            s.to_lowercase().contains("gitoxide"),
+            "output should mention gitoxide so a reader knows whose root license covers gix-alpha:\n{s}"
+        );
+    }
+
+    /// `gix licenses gitoxide` should produce the gitoxide root package's
+    /// license attribution, even though the root is not stored in
+    /// `manifest.crates`. The same MIT + Apache-2.0 text the same-attribution
+    /// path uses is the right answer here too: gitoxide is itself covered by
+    /// those files.
+    #[test]
+    fn render_crate_for_root_package_name_includes_real_license_text() {
+        let manifest = sample_manifest();
+        let mut buf = Vec::new();
+        render_crate(&mut buf, &manifest, "gitoxide").expect("`gitoxide` should be queryable");
+        let s = String::from_utf8(buf).unwrap();
+
+        assert!(s.contains("gitoxide"), "output should name the package:\n{s}");
+        assert!(
+            s.contains("Permission is hereby granted"),
+            "MIT license body should appear inline for the root:\n{s}"
         );
         assert!(
-            s.contains("LICENSE-MIT") && s.contains("LICENSE-APACHE"),
-            "output should point at the root license files:\n{s}",
+            s.contains("Apache License") && s.contains("Version 2.0"),
+            "Apache-2.0 license body should appear inline for the root:\n{s}"
         );
     }
 

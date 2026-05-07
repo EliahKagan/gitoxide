@@ -209,34 +209,56 @@ fn write_crate(w: &mut (impl Write + ?Sized), c: &CrateLicense) -> io::Result<()
     Ok(())
 }
 
-/// Render one crate's full attribution, looked up by name.
+/// Render the full attribution for every entry whose name matches.
 ///
-/// If the named crate has a full entry in the manifest, print it. If the
-/// name matches a workspace member whose attribution is identical to the
-/// root `gitoxide` package's, print a short note pointing at the root's
-/// license files rather than duplicating them. Otherwise return an error
-/// of kind [`io::ErrorKind::NotFound`].
+/// Most names resolve to a single crate, in which case the output is the
+/// per-crate attribution by itself. When cargo resolved multiple versions
+/// of the same crate (e.g. `crate-x v1` under MIT and `crate-x v2` under
+/// Apache-2.0 in the same build), every matching version is printed in
+/// turn, separated by [`CRATE_DIVIDER`], with a header announcing the
+/// multi-version case so a reader does not mistake the output for
+/// duplicated rendering of one crate.
+///
+/// Falls through to the same-attribution-workspace-member path if no
+/// `crates` entry matches but the name is in
+/// [`Manifest::workspace_members_same_attribution`]. Otherwise returns
+/// [`io::ErrorKind::NotFound`].
 pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &str) -> io::Result<()> {
-    if let Some(c) = manifest.find(name) {
-        return write_crate(w, c);
+    let hits = manifest.find_all(name);
+    match hits.len() {
+        0 => {
+            if manifest.is_same_attribution_workspace_member(name) {
+                writeln!(w, "{name}")?;
+                writeln!(w, "Workspace member with attribution identical to `gitoxide`.")?;
+                writeln!(
+                    w,
+                    "License, copyright, and attribution are covered by the LICENSE-MIT and",
+                )?;
+                writeln!(
+                    w,
+                    "LICENSE-APACHE files at the root of the gitoxide source tree and release archive.",
+                )?;
+                return Ok(());
+            }
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("no dependency named {name:?} in the manifest"),
+            ))
+        }
+        1 => write_crate(w, hits[0]),
+        n => {
+            writeln!(w, "`{name}` is linked into this binary in {n} versions:")?;
+            writeln!(w)?;
+            for (i, c) in hits.iter().enumerate() {
+                if i > 0 {
+                    writeln!(w, "{CRATE_DIVIDER}")?;
+                    writeln!(w)?;
+                }
+                write_crate(w, c)?;
+            }
+            Ok(())
+        }
     }
-    if manifest.is_same_attribution_workspace_member(name) {
-        writeln!(w, "{name}")?;
-        writeln!(w, "Workspace member with attribution identical to `gitoxide`.")?;
-        writeln!(
-            w,
-            "License, copyright, and attribution are covered by the LICENSE-MIT and",
-        )?;
-        writeln!(
-            w,
-            "LICENSE-APACHE files at the root of the gitoxide source tree and release archive.",
-        )?;
-        return Ok(());
-    }
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        format!("no dependency named {name:?} in the manifest"),
-    ))
 }
 
 /// Render the full attribution for every crate, separated by dividers,
@@ -498,6 +520,71 @@ mod tests {
         let manifest = sample_manifest();
         let err = render_crate(&mut Vec::new(), &manifest, "nonexistent-xyz").unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    /// Build a small manifest containing two distinct versions of the same
+    /// crate `dual-version` under different license expressions. Used by
+    /// the multi-version-handling tests.
+    fn manifest_with_two_versions_of(name: &str, spdx_a: &str, spdx_b: &str) -> Manifest {
+        let mk = |version: &str, spdx: &str, body: &str| CrateLicense {
+            name: name.to_string(),
+            version: version.into(),
+            spdx: Some(spdx.into()),
+            authors: vec![],
+            repository: None,
+            homepage: None,
+            files: vec![LicenseFile {
+                name: format!("LICENSE-{version}"),
+                text: format!("{body}\n"),
+            }],
+            used_spdx_fallback: false,
+            is_workspace_member: false,
+        };
+        Manifest {
+            crates: vec![mk("1.0.0", spdx_a, "v1 body"), mk("2.0.0", spdx_b, "v2 body")],
+            workspace_members_same_attribution: Vec::new(),
+            generated_at: "t".into(),
+            feature_profile: None,
+            target_triple: "x86_64-unknown-linux-gnu".into(),
+        }
+    }
+
+    #[test]
+    fn render_crate_shows_all_versions_when_name_is_ambiguous() {
+        let manifest = manifest_with_two_versions_of("dual-version", "MIT", "Apache-2.0");
+        let mut buf = Vec::new();
+        render_crate(&mut buf, &manifest, "dual-version").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+
+        // Both versions must appear.
+        assert!(s.contains("dual-version 1.0.0"), "v1.0.0 missing:\n{s}");
+        assert!(s.contains("dual-version 2.0.0"), "v2.0.0 missing:\n{s}");
+        // Both license expressions must appear.
+        assert!(s.contains("License: MIT"), "MIT line missing:\n{s}");
+        assert!(s.contains("License: Apache-2.0"), "Apache-2.0 line missing:\n{s}");
+        // Both license texts must appear.
+        assert!(s.contains("v1 body"), "v1 license body missing:\n{s}");
+        assert!(s.contains("v2 body"), "v2 license body missing:\n{s}");
+        // The output should clearly indicate that this name has multiple
+        // versions, so a reader doesn't think they're seeing duplicate output.
+        assert!(
+            s.contains("2 versions") || s.contains("two versions"),
+            "expected an indication that the name resolves to multiple versions:\n{s}"
+        );
+    }
+
+    #[test]
+    fn render_crate_single_match_renders_one_entry_only() {
+        // Single-match path should not gain a "multi versions" header.
+        let manifest = sample_manifest();
+        let mut buf = Vec::new();
+        render_crate(&mut buf, &manifest, "anyhow").unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.contains("anyhow 1.0.98"));
+        assert!(
+            !s.contains("versions"),
+            "single-match output should not announce multiple versions:\n{s}"
+        );
     }
 
     /// The summary view groups crates into three categories: third-party

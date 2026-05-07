@@ -47,6 +47,16 @@ pub struct CrateLicense {
     /// know which attributions may be less complete than the upstream crate.
     #[serde(default)]
     pub used_spdx_fallback: bool,
+    /// `true` if this entry describes a member of gitoxide's own workspace
+    /// rather than a third-party dependency. Workspace members appear in this
+    /// list (rather than in [`Manifest::workspace_members_same_attribution`])
+    /// when their license expression or authorship differs from the root
+    /// `gitoxide` package and they therefore need their own attribution
+    /// entry. Synthetic entries the build script may inject (such as the
+    /// Rust standard library) are neither workspace members nor third-party
+    /// crates from cargo's perspective and have this set to `false`.
+    #[serde(default)]
+    pub is_workspace_member: bool,
 }
 
 /// The full manifest: one entry per third-party dependency linked into the
@@ -129,6 +139,7 @@ mod tests {
                 text: "MIT text body".into(),
             }],
             used_spdx_fallback: false,
+            is_workspace_member: false,
         }
     }
 
@@ -170,5 +181,34 @@ mod tests {
         }"#;
         let m: Manifest = serde_json::from_str(without_field).expect("deserialize without the field");
         assert!(m.workspace_members_same_attribution.is_empty());
+    }
+
+    #[test]
+    fn is_workspace_member_defaults_to_false_on_deserialize() {
+        // Older blobs without the per-crate `is_workspace_member` field must
+        // still deserialize. The field defaults to `false` (i.e. the entry is
+        // assumed to be a third-party crate, which is the only kind we used
+        // to record before the workspace-member-with-separate-attribution
+        // case got its own typed indicator).
+        let json = r#"{
+          "name": "anyhow",
+          "version": "1.0.98",
+          "spdx": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": null,
+          "homepage": null,
+          "files": []
+        }"#;
+        let c: CrateLicense = serde_json::from_str(json).expect("deserialize without the field");
+        assert!(!c.is_workspace_member);
+    }
+
+    #[test]
+    fn is_workspace_member_round_trips_through_serde() {
+        let mut c = sample_crate();
+        c.is_workspace_member = true;
+        let json = serde_json::to_string(&c).expect("serialize");
+        let back: CrateLicense = serde_json::from_str(&json).expect("deserialize");
+        assert!(back.is_workspace_member);
     }
 }

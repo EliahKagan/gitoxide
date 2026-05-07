@@ -1,17 +1,23 @@
-//! Rendering of the third-party dependency manifest for human consumption.
+//! Rendering of the dependency-license manifest for human consumption.
 //!
-//! Three outputs are offered, all writing into an arbitrary [`Write`] sink:
+//! Three top-level outputs are offered, all writing into an arbitrary
+//! [`Write`] sink:
 //!
-//! * [`render_summary`] — a header and a column-aligned table listing every
-//!   third-party crate, its version, its declared SPDX expression, and a
-//!   note column indicating crates that have no license text embedded.
+//! * [`render_summary`] — a header followed by three sections: a
+//!   column-aligned table of true third-party crates, a column-aligned table
+//!   of gitoxide's own workspace members that need their own attribution
+//!   (because their license or authorship differs from the root), and a
+//!   names-only listing of workspace members whose attribution matches the
+//!   root and so are covered by the repository's `LICENSE-MIT` /
+//!   `LICENSE-APACHE` files.
 //! * [`render_crate`] — one crate's attribution in full: version, SPDX,
 //!   repository/homepage, authors, and every LICENSE / NOTICE / AUTHORS /
 //!   COPYRIGHT / COPYING file found in its source tree.
-//! * [`render_all`] — header plus [`render_crate`] for every crate, separated
-//!   by dividers. This is the canonical form that is also emitted to
-//!   `THIRD-PARTY-LICENSES.txt` in release archives, so the subcommand output
-//!   and the archive file match byte-for-byte for a given build.
+//! * [`render_all`] — header plus full per-crate attribution for every
+//!   crate, in the same three sections as [`render_summary`], separated by
+//!   dividers. This is the canonical form that is also emitted to
+//!   `THIRD-PARTY-LICENSES.txt` in release archives, so the subcommand
+//!   output and the archive file match byte-for-byte for a given build.
 //!
 //! None of these functions allocate a full string copy of the manifest; they
 //! stream formatted output through the [`Write`] sink.
@@ -23,54 +29,37 @@ use super::types::{CrateLicense, Manifest};
 const CRATE_DIVIDER: &str = "================================================================";
 const FILE_DIVIDER: &str = "----------------------------------------------------------------";
 
-/// Write the manifest header describing which feature profile, target, and
-/// generation timestamp the manifest corresponds to.
+/// Write the manifest header: profile, target, generation timestamp.
+///
+/// Per-section counts are printed at each section header rather than here,
+/// so that a reader doesn't have to mentally subtract one count from another
+/// to reason about how many crates fall into which group.
 fn write_header(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
-    writeln!(w, "gitoxide third-party dependencies")?;
+    writeln!(w, "gitoxide license attribution")?;
     let profile = manifest.feature_profile.as_deref().unwrap_or("(custom features)");
     writeln!(w, "Feature profile: {profile}")?;
     writeln!(w, "Target triple:   {}", manifest.target_triple)?;
     writeln!(w, "Generated at:    {}", manifest.generated_at)?;
-    writeln!(w, "Dependency count: {}", manifest.crates.len())?;
-    writeln!(
-        w,
-        "Workspace members with gitoxide-equivalent attribution: {}",
-        manifest.workspace_members_same_attribution.len(),
-    )?;
     writeln!(w)?;
     Ok(())
 }
 
-/// Write the section listing workspace members whose attribution matches
-/// the root package's, if any. The caller decides where to place this —
-/// at the end of [`render_summary`] and [`render_all`] output.
-fn write_same_attribution_workspace_section(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
-    if manifest.workspace_members_same_attribution.is_empty() {
+/// Write a column-aligned table for one of the per-section crate slices in
+/// the summary view. Column widths are computed from the slice itself so each
+/// section aligns within itself; this keeps the third-party section's name
+/// column from being padded out to fit a long workspace-member name from a
+/// different section.
+fn write_summary_table(w: &mut (impl Write + ?Sized), crates: &[&CrateLicense]) -> io::Result<()> {
+    if crates.is_empty() {
         return Ok(());
     }
-    writeln!(w)?;
-    writeln!(w, "Workspace members with the same license and authorship as gitoxide")?;
-    writeln!(
-        w,
-        "(covered by the repository's LICENSE-MIT / LICENSE-APACHE at the root):"
-    )?;
-    for name in &manifest.workspace_members_same_attribution {
-        writeln!(w, "  {name}")?;
-    }
-    Ok(())
-}
-
-/// Render a column-aligned summary table of all third-party dependencies.
-pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
-    write_header(w, manifest)?;
-
-    // Column width = the widest cell or the header, whichever is longer.
-    // The fallback `default` only matters when `crates` is empty; pick a
-    // reasonable per-column floor so an empty table still aligns visually.
+    // Column width = widest cell or the header, whichever is longer. The
+    // fallback floors only matter when `crates` is empty (and we've already
+    // returned), but they keep the closure honest.
     let col_width = |default: usize, header: &str, cell: fn(&CrateLicense) -> usize| -> usize {
-        manifest
-            .crates
+        crates
             .iter()
+            .copied()
             .map(cell)
             .max()
             .unwrap_or(default)
@@ -88,7 +77,7 @@ pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io:
         spdx = "LICENSE",
     )?;
 
-    for c in &manifest.crates {
+    for c in crates {
         let spdx = c.spdx.as_deref().unwrap_or("(none)");
         let mut notes = Vec::new();
         if c.used_spdx_fallback {
@@ -106,6 +95,63 @@ pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io:
             notes = notes.join(", "),
         )?;
     }
+    Ok(())
+}
+
+/// Partition the manifest's `crates` into third-party crates and gitoxide
+/// workspace members with separate attribution. Both halves preserve the
+/// (name, version) order in which they appeared in the source manifest.
+fn partition_crates(manifest: &Manifest) -> (Vec<&CrateLicense>, Vec<&CrateLicense>) {
+    let mut third_party = Vec::new();
+    let mut workspace_members = Vec::new();
+    for c in &manifest.crates {
+        if c.is_workspace_member {
+            workspace_members.push(c);
+        } else {
+            third_party.push(c);
+        }
+    }
+    (third_party, workspace_members)
+}
+
+/// Write the section listing workspace members whose attribution matches the
+/// root package's (recorded by name only — the actual license text comes from
+/// the root LICENSE-MIT / LICENSE-APACHE files).
+fn write_same_attribution_workspace_section(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
+    if manifest.workspace_members_same_attribution.is_empty() {
+        return Ok(());
+    }
+    writeln!(w)?;
+    writeln!(
+        w,
+        "Workspace members covered by gitoxide's LICENSE-MIT / LICENSE-APACHE ({}):",
+        manifest.workspace_members_same_attribution.len(),
+    )?;
+    for name in &manifest.workspace_members_same_attribution {
+        writeln!(w, "  {name}")?;
+    }
+    Ok(())
+}
+
+/// Render a column-aligned summary of every crate linked into this binary,
+/// grouped into three sections: true third-party crates, gitoxide's own
+/// workspace members that have separate attribution, and (by name) the
+/// workspace members whose attribution matches the root.
+pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
+    write_header(w, manifest)?;
+
+    let (third_party, workspace_members) = partition_crates(manifest);
+
+    writeln!(w, "Third-party crates linked into this binary ({}):", third_party.len())?;
+    write_summary_table(w, &third_party)?;
+    writeln!(w)?;
+    writeln!(
+        w,
+        "Workspace members with separate attribution ({}):",
+        workspace_members.len(),
+    )?;
+    write_summary_table(w, &workspace_members)?;
+    write_same_attribution_workspace_section(w, manifest)?;
 
     writeln!(w)?;
     writeln!(
@@ -113,7 +159,6 @@ pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io:
         "Use `gix licenses <CRATE>` or `ein licenses <CRATE>` for the full attribution of a single crate,"
     )?;
     writeln!(w, "or pass `--all` to print every license and notice in full.")?;
-    write_same_attribution_workspace_section(w, manifest)?;
     Ok(())
 }
 
@@ -194,19 +239,40 @@ pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &s
     ))
 }
 
-/// Render the full attribution for every crate, separated by dividers.
-///
-/// This is the byte-for-byte form shipped as `THIRD-PARTY-LICENSES.txt` in
-/// release archives.
+/// Render the full attribution for every crate, separated by dividers,
+/// grouped into the same three sections [`render_summary`] uses. This is
+/// the byte-for-byte form shipped as `THIRD-PARTY-LICENSES.txt` in release
+/// archives.
 pub fn render_all(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
     write_header(w, manifest)?;
-    for (i, c) in manifest.crates.iter().enumerate() {
+
+    let (third_party, workspace_members) = partition_crates(manifest);
+
+    writeln!(w, "Third-party crates linked into this binary ({}):", third_party.len())?;
+    writeln!(w)?;
+    for (i, c) in third_party.iter().enumerate() {
         if i > 0 {
             writeln!(w, "{CRATE_DIVIDER}")?;
             writeln!(w)?;
         }
         write_crate(w, c)?;
     }
+
+    writeln!(w)?;
+    writeln!(
+        w,
+        "Workspace members with separate attribution ({}):",
+        workspace_members.len(),
+    )?;
+    writeln!(w)?;
+    for (i, c) in workspace_members.iter().enumerate() {
+        if i > 0 {
+            writeln!(w, "{CRATE_DIVIDER}")?;
+            writeln!(w)?;
+        }
+        write_crate(w, c)?;
+    }
+
     write_same_attribution_workspace_section(w, manifest)?;
     Ok(())
 }
@@ -231,6 +297,7 @@ mod tests {
                         text: "MIT body text\n".into(),
                     }],
                     used_spdx_fallback: false,
+                    is_workspace_member: false,
                 },
                 CrateLicense {
                     name: "mpl-example".into(),
@@ -241,6 +308,25 @@ mod tests {
                     homepage: None,
                     files: vec![],
                     used_spdx_fallback: false,
+                    is_workspace_member: false,
+                },
+                // A workspace member that needs its own attribution entry —
+                // mirrors the real-world `gix-imara-diff` case (vendored
+                // upstream Apache-2.0, different from gitoxide's root
+                // MIT-or-Apache-2.0).
+                CrateLicense {
+                    name: "gix-imara-diff".into(),
+                    version: "0.2.1".into(),
+                    spdx: Some("Apache-2.0".into()),
+                    authors: vec!["Pascal Kuthe".into()],
+                    repository: Some("https://github.com/pascalkuthe/imara-diff".into()),
+                    homepage: None,
+                    files: vec![LicenseFile {
+                        name: "LICENSE-APACHE".into(),
+                        text: "Apache body text\n".into(),
+                    }],
+                    used_spdx_fallback: false,
+                    is_workspace_member: true,
                 },
             ],
             workspace_members_same_attribution: vec!["gix-alpha".into(), "gix-beta".into()],
@@ -257,13 +343,23 @@ mod tests {
     }
 
     #[test]
-    fn summary_includes_header_and_both_crates() {
+    fn summary_includes_header_and_listed_crates() {
         let out = render_to_string(&sample_manifest(), render_summary);
         assert!(out.contains("Feature profile: max"));
         assert!(out.contains("Target triple:   aarch64-apple-darwin"));
-        assert!(out.contains("Dependency count: 2"));
+        // Per-section counts are written at section headers, not in the top
+        // header. Verify the section-level counts are present and reasonable.
+        assert!(
+            out.contains("Third-party crates linked into this binary (2):"),
+            "expected third-party section header with count 2:\n{out}"
+        );
+        assert!(
+            out.contains("Workspace members with separate attribution (1):"),
+            "expected separate-attribution section header with count 1:\n{out}"
+        );
         assert!(out.contains("anyhow"));
         assert!(out.contains("mpl-example"));
+        assert!(out.contains("gix-imara-diff"));
     }
 
     #[test]
@@ -323,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn render_all_on_empty_manifest_has_just_header() {
+    fn render_all_on_empty_manifest_has_just_header_and_empty_section_headers() {
         let manifest = Manifest {
             crates: vec![],
             workspace_members_same_attribution: vec![],
@@ -332,7 +428,18 @@ mod tests {
             target_triple: "x86_64-unknown-linux-gnu".into(),
         };
         let out = render_to_string(&manifest, render_all);
-        assert!(out.contains("Dependency count: 0"));
+        assert!(
+            out.contains("Third-party crates linked into this binary (0):"),
+            "empty manifest still announces the third-party section with count 0:\n{out}"
+        );
+        assert!(
+            out.contains("Workspace members with separate attribution (0):"),
+            "empty manifest still announces the separate-attribution section with count 0:\n{out}"
+        );
+        assert!(
+            !out.contains("Workspace members covered by"),
+            "same-attribution section should be absent when the list is empty"
+        );
         assert!(!out.contains(CRATE_DIVIDER));
     }
 
@@ -340,8 +447,8 @@ mod tests {
     fn summary_lists_same_attribution_workspace_members() {
         let out = render_to_string(&sample_manifest(), render_summary);
         assert!(
-            out.contains("Workspace members with the same license and authorship as gitoxide"),
-            "summary should introduce the same-attribution section:\n{out}",
+            out.contains("Workspace members covered by gitoxide's LICENSE-MIT / LICENSE-APACHE (2):"),
+            "summary should introduce the same-attribution section with its count:\n{out}",
         );
         assert!(out.contains("gix-alpha"), "summary should list gix-alpha:\n{out}");
         assert!(out.contains("gix-beta"), "summary should list gix-beta:\n{out}");
@@ -351,20 +458,11 @@ mod tests {
     fn render_all_lists_same_attribution_workspace_members() {
         let out = render_to_string(&sample_manifest(), render_all);
         assert!(
-            out.contains("Workspace members with the same license and authorship as gitoxide"),
-            "render_all should include the same-attribution section",
+            out.contains("Workspace members covered by gitoxide's LICENSE-MIT / LICENSE-APACHE (2):"),
+            "render_all should include the same-attribution section with its count:\n{out}",
         );
         assert!(out.contains("gix-alpha"));
         assert!(out.contains("gix-beta"));
-    }
-
-    #[test]
-    fn header_reports_same_attribution_workspace_count() {
-        let out = render_to_string(&sample_manifest(), render_summary);
-        assert!(
-            out.contains("Workspace members with gitoxide-equivalent attribution: 2"),
-            "header must report the count:\n{out}",
-        );
     }
 
     #[test]
@@ -372,8 +470,10 @@ mod tests {
         let mut manifest = sample_manifest();
         manifest.workspace_members_same_attribution.clear();
         let out = render_to_string(&manifest, render_summary);
-        assert!(!out.contains("Workspace members with the same license"));
-        assert!(out.contains("Workspace members with gitoxide-equivalent attribution: 0"));
+        assert!(
+            !out.contains("Workspace members covered by"),
+            "same-attribution section should be absent when its list is empty"
+        );
     }
 
     #[test]
@@ -398,5 +498,95 @@ mod tests {
         let manifest = sample_manifest();
         let err = render_crate(&mut Vec::new(), &manifest, "nonexistent-xyz").unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    /// The summary view groups crates into three categories: third-party
+    /// crates (sourced from elsewhere), gitoxide workspace members whose
+    /// license or authorship differs from the root and so need their own
+    /// attribution entry, and gitoxide workspace members whose attribution
+    /// matches the root's (recorded by name only). Each category gets its
+    /// own section header so a reader can tell at a glance which crates
+    /// in the binary are third-party and which come from gitoxide itself.
+    #[test]
+    fn summary_separates_third_party_from_workspace_member_attribution() {
+        let out = render_to_string(&sample_manifest(), render_summary);
+
+        let third_party_pos = out
+            .find("Third-party crates")
+            .unwrap_or_else(|| panic!("expected a 'Third-party crates' section header in:\n{out}"));
+        let separate_attrib_pos = out
+            .find("Workspace members with separate attribution")
+            .unwrap_or_else(|| panic!("expected a separate-attribution section header in:\n{out}"));
+        let same_attrib_pos = out
+            .find("Workspace members covered by")
+            .unwrap_or_else(|| panic!("expected a same-attribution section header in:\n{out}"));
+
+        assert!(
+            third_party_pos < separate_attrib_pos,
+            "third-party section must precede separate-attribution workspace section"
+        );
+        assert!(
+            separate_attrib_pos < same_attrib_pos,
+            "separate-attribution section must precede same-attribution section"
+        );
+
+        // Third-party slice must list anyhow and mpl-example but NOT gix-imara-diff
+        // (which is a workspace member with separate attribution, not a
+        // third-party crate).
+        let third_party_slice = &out[third_party_pos..separate_attrib_pos];
+        assert!(
+            third_party_slice.contains("anyhow"),
+            "anyhow missing from third-party section"
+        );
+        assert!(
+            third_party_slice.contains("mpl-example"),
+            "mpl-example missing from third-party section"
+        );
+        assert!(
+            !third_party_slice.contains("gix-imara-diff"),
+            "gix-imara-diff is a workspace member; must not appear in third-party section"
+        );
+
+        // Separate-attribution slice must list gix-imara-diff and not
+        // anyhow/mpl-example.
+        let separate_slice = &out[separate_attrib_pos..same_attrib_pos];
+        assert!(
+            separate_slice.contains("gix-imara-diff"),
+            "gix-imara-diff missing from separate-attribution workspace section"
+        );
+        assert!(
+            !separate_slice.contains("anyhow"),
+            "anyhow is third-party; must not appear in workspace-member section"
+        );
+
+        // Same-attribution slice must list gix-alpha and gix-beta.
+        let same_slice = &out[same_attrib_pos..];
+        assert!(same_slice.contains("gix-alpha"));
+        assert!(same_slice.contains("gix-beta"));
+    }
+
+    #[test]
+    fn render_all_separates_third_party_from_workspace_member_attribution() {
+        let out = render_to_string(&sample_manifest(), render_all);
+
+        let third_party_pos = out
+            .find("Third-party crates")
+            .unwrap_or_else(|| panic!("expected a 'Third-party crates' section header in:\n{out}"));
+        let separate_attrib_pos = out
+            .find("Workspace members with separate attribution")
+            .unwrap_or_else(|| panic!("expected a separate-attribution section header in:\n{out}"));
+
+        // anyhow's full attribution should be in the third-party slice; gix-imara-diff's
+        // full attribution should be in the separate-attribution slice.
+        let third_party_slice = &out[third_party_pos..separate_attrib_pos];
+        assert!(
+            third_party_slice.contains("MIT body text"),
+            "anyhow's license text should appear under third-party"
+        );
+        let separate_slice = &out[separate_attrib_pos..];
+        assert!(
+            separate_slice.contains("Apache body text"),
+            "gix-imara-diff's license text should appear under separate-attribution workspace section"
+        );
     }
 }

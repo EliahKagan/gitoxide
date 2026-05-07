@@ -134,11 +134,29 @@ fn write_same_attribution_workspace_section(w: &mut (impl Write + ?Sized), manif
     Ok(())
 }
 
+/// Knobs the caller can pass to [`render_summary_with_options`] to control
+/// what the summary view includes.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SummaryOptions {
+    /// When `true`, include the same-attribution-workspace-members listing
+    /// (the third group of names) alongside the third-party and
+    /// workspace-with-separate-attribution sections. When `false` (the
+    /// default), that listing is omitted — for many projects it is the
+    /// largest of the three groups and clutters the at-a-glance summary
+    /// with names a reader rarely needs to look at one by one.
+    pub verbose: bool,
+}
+
 /// Render a column-aligned summary of every crate linked into this binary,
 /// grouped into three sections: true third-party crates, gitoxide's own
-/// workspace members that have separate attribution, and (by name) the
-/// workspace members whose attribution matches the root.
-pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
+/// workspace members that have separate attribution, and (under
+/// [`SummaryOptions::verbose`]) the workspace members whose attribution
+/// matches the root, listed by name.
+pub fn render_summary_with_options(
+    w: &mut (impl Write + ?Sized),
+    manifest: &Manifest,
+    opts: SummaryOptions,
+) -> io::Result<()> {
     write_header(w, manifest)?;
 
     let (third_party, workspace_members) = partition_crates(manifest);
@@ -152,7 +170,9 @@ pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io:
         workspace_members.len(),
     )?;
     write_summary_table(w, &workspace_members)?;
-    write_same_attribution_workspace_section(w, manifest)?;
+    if opts.verbose {
+        write_same_attribution_workspace_section(w, manifest)?;
+    }
 
     writeln!(w)?;
     writeln!(
@@ -161,6 +181,13 @@ pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io:
     )?;
     writeln!(w, "or pass `--all` to print every license and notice in full.")?;
     Ok(())
+}
+
+/// Convenience wrapper around [`render_summary_with_options`] that uses
+/// default options (no verbose listing of same-attribution workspace
+/// members). Equivalent to passing [`SummaryOptions::default()`].
+pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
+    render_summary_with_options(w, manifest, SummaryOptions::default())
 }
 
 /// Write one crate's full attribution, including every license/notice file.
@@ -502,14 +529,45 @@ mod tests {
     }
 
     #[test]
-    fn summary_lists_same_attribution_workspace_members() {
-        let out = render_to_string(&sample_manifest(), render_summary);
+    fn summary_lists_same_attribution_workspace_members_when_verbose() {
+        // The same-attribution-workspace-members listing is gated on the
+        // verbose flag in the summary view; with the flag set the listing
+        // appears verbatim (with its count, name lines, and section header).
+        let mut buf = Vec::new();
+        render_summary_with_options(&mut buf, &sample_manifest(), SummaryOptions { verbose: true }).expect("render");
+        let out = String::from_utf8(buf).unwrap();
         assert!(
             out.contains("Workspace members covered by gitoxide's LICENSE-MIT / LICENSE-APACHE (2):"),
-            "summary should introduce the same-attribution section with its count:\n{out}",
+            "verbose summary should introduce the same-attribution section with its count:\n{out}",
         );
-        assert!(out.contains("gix-alpha"), "summary should list gix-alpha:\n{out}");
-        assert!(out.contains("gix-beta"), "summary should list gix-beta:\n{out}");
+        assert!(
+            out.contains("gix-alpha"),
+            "verbose summary should list gix-alpha:\n{out}"
+        );
+        assert!(out.contains("gix-beta"), "verbose summary should list gix-beta:\n{out}");
+    }
+
+    #[test]
+    fn summary_omits_same_attribution_names_by_default() {
+        // Without verbose, the default summary omits the same-attribution
+        // names listing entirely — its own section header included. This is
+        // the behavior `gix licenses` (no further arguments) produces.
+        let out = render_to_string(&sample_manifest(), render_summary);
+        assert!(
+            !out.contains("Workspace members covered by"),
+            "default summary should not include the same-attribution section header:\n{out}"
+        );
+        assert!(
+            !out.contains("gix-alpha"),
+            "default summary should not list gix-alpha:\n{out}"
+        );
+        assert!(
+            !out.contains("gix-beta"),
+            "default summary should not list gix-beta:\n{out}"
+        );
+        // The third-party and separate-attribution sections still appear.
+        assert!(out.contains("Third-party crates linked into this binary"));
+        assert!(out.contains("Workspace members with separate attribution"));
     }
 
     #[test]
@@ -669,9 +727,17 @@ mod tests {
     /// matches the root's (recorded by name only). Each category gets its
     /// own section header so a reader can tell at a glance which crates
     /// in the binary are third-party and which come from gitoxide itself.
+    ///
+    /// Verbose mode is used so the same-attribution section is present and
+    /// the three-section ordering can be checked end-to-end. The default
+    /// summary's omission of that section is verified separately by
+    /// [`summary_omits_same_attribution_names_by_default`].
     #[test]
     fn summary_separates_third_party_from_workspace_member_attribution() {
-        let out = render_to_string(&sample_manifest(), render_summary);
+        let mut buf = Vec::new();
+        render_summary_with_options(&mut buf, &sample_manifest(), SummaryOptions { verbose: true })
+            .expect("render to a Vec<u8> is infallible except for the manifest content");
+        let out = String::from_utf8(buf).expect("render output is valid UTF-8");
 
         let third_party_pos = out
             .find("Third-party crates")

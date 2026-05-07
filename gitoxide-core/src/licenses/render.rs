@@ -175,7 +175,7 @@ pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &s
     if let Some(c) = manifest.find(name) {
         return write_crate(w, c);
     }
-    if manifest.workspace_members_same_attribution.iter().any(|n| n == name) {
+    if manifest.is_same_attribution_workspace_member(name) {
         writeln!(w, "{name}")?;
         writeln!(w, "Workspace member with attribution identical to `gitoxide`.")?;
         writeln!(

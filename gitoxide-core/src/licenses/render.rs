@@ -1,23 +1,40 @@
 //! Rendering of the dependency-license manifest for human consumption.
 //!
-//! Three top-level outputs are offered, all writing into an arbitrary
+//! Four top-level outputs are offered, all writing into an arbitrary
 //! [`Write`] sink:
 //!
-//! * [`render_summary`] — a header followed by three sections: a
-//!   column-aligned table of true third-party crates, a column-aligned table
-//!   of gitoxide's own workspace members that need their own attribution
-//!   (because their license or authorship differs from the root), and a
-//!   names-only listing of workspace members whose attribution matches the
-//!   root and so are covered by the repository's `LICENSE-MIT` /
-//!   `LICENSE-APACHE` files.
+//! * [`render_summary`] — a header followed by two column-aligned tables:
+//!   true third-party crates, and gitoxide's own workspace members that
+//!   need their own attribution (because their license or authorship
+//!   differs from the root). Followed by a legend (only when any crate
+//!   carries a footnote mark in the notes column) and a footer pointing
+//!   the reader at `gix licenses <CRATE>` and `--all`. Convenience
+//!   wrapper around [`render_summary_with_options`] with default
+//!   options.
+//! * [`render_summary_with_options`] — identical to [`render_summary`]
+//!   but takes a [`SummaryOptions`] knob. With [`SummaryOptions::verbose`]
+//!   set, a third names-only listing is appended: workspace members
+//!   whose attribution matches the root and so are covered by the
+//!   repository's `LICENSE-MIT` / `LICENSE-APACHE` files. The default
+//!   omits that listing because for many manifests it is the largest of
+//!   the three groups and clutters the at-a-glance summary.
 //! * [`render_crate`] — one crate's attribution in full: version, SPDX,
 //!   repository/homepage, authors, and every LICENSE / NOTICE / AUTHORS /
-//!   COPYRIGHT / COPYING file found in its source tree.
+//!   COPYRIGHT / COPYING file found in its source tree. For the root
+//!   `gitoxide` package (or any same-attribution workspace member),
+//!   prints the actual MIT and Apache-2.0 file bodies inline.
 //! * [`render_all`] — header plus full per-crate attribution for every
-//!   crate, in the same three sections as [`render_summary`], separated by
-//!   dividers. This is the canonical form that is also emitted to
+//!   crate, in three sections — third-party crates, workspace-with-
+//!   separate-attribution, and (always, regardless of any verbose knob)
+//!   the same-attribution names listing — separated by dividers. This
+//!   is the canonical form that is also emitted to
 //!   `THIRD-PARTY-LICENSES.txt` in release archives, so the subcommand
 //!   output and the archive file match byte-for-byte for a given build.
+//!
+//! Footnote marks `[*]` (SPDX fallback) and `[!]` (no license text)
+//! appear in the summary table's notes column for crates that carry the
+//! corresponding flag, and a legend explaining each used mark is printed
+//! between the data tables and the footer guidance.
 //!
 //! None of these functions allocate a full string copy of the manifest; they
 //! stream formatted output through the [`Write`] sink.
@@ -372,9 +389,13 @@ pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &s
 }
 
 /// Render the full attribution for every crate, separated by dividers,
-/// grouped into the same three sections [`render_summary`] uses. This is
-/// the byte-for-byte form shipped as `THIRD-PARTY-LICENSES.txt` in release
-/// archives.
+/// grouped into three sections — third-party crates, workspace-with-
+/// separate-attribution, and the same-attribution workspace-member names
+/// listing. The same-attribution section is always present (unlike in the
+/// summary, where it is gated on [`SummaryOptions::verbose`]) — `render_all`
+/// is the byte-for-byte form shipped as `THIRD-PARTY-LICENSES.txt` in
+/// release archives, and gating any of its sections on a flag would make
+/// that archived file non-deterministic.
 pub fn render_all(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
     write_header(w, manifest)?;
 

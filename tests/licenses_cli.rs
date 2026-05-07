@@ -1,18 +1,21 @@
-//! End-to-end checks of the `gix licenses` subcommand's output shape under
-//! different flag combinations. The unit tests in
-//! `gitoxide-core/src/licenses/render.rs` and `src/licenses/cli.rs` already
-//! cover the rendering and JSON-emission logic against hand-crafted
-//! manifests; this file exercises the same surface against the actual built
-//! `gix` binary so the embedded manifest, the clap argument parser, and the
-//! summary/`--all`/single-crate dispatch are all in the loop.
+//! End-to-end checks of the `gix licenses` (and where applicable
+//! `ein licenses`) subcommand's output shape under different flag
+//! combinations. The unit tests in `gitoxide-core/src/licenses/render.rs`
+//! and `src/licenses/cli.rs` already cover the rendering and JSON-emission
+//! logic against hand-crafted manifests; this file exercises the same
+//! surface against the actually built binaries so the embedded manifest,
+//! the clap argument parser, and the summary/`--all`/single-crate dispatch
+//! are all in the loop.
 //!
-//! Each test runs the binary as a subprocess via `CARGO_BIN_EXE_gix` (the
-//! same env var the existing `licenses_parity.rs` and
-//! `licenses_workspace_attribution.rs` integration tests use), captures its
-//! stdout, and asserts on string-level invariants. We deliberately avoid
-//! asserting on specific crate names from the real manifest — those would
-//! drift as dependencies change — and instead assert on section headers and
-//! help text, which are part of the CLI's stable contract.
+//! Each test runs a binary as a subprocess via `CARGO_BIN_EXE_gix` /
+//! `CARGO_BIN_EXE_ein` (the same env var the existing `licenses_parity.rs`
+//! and `licenses_workspace_attribution.rs` integration tests use), captures
+//! both stdout and (for error-path tests) stderr and exit status, and
+//! asserts on string-level invariants. We deliberately avoid asserting on
+//! specific third-party crate names from the real manifest — those would
+//! drift as dependencies change — and instead assert on section headers,
+//! synthesized-entry contents, exit codes, and help text, which are part
+//! of the CLI's stable contract.
 
 use std::process::{Command, Output};
 

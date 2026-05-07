@@ -6,8 +6,8 @@
 use std::io::Write;
 
 use anyhow::{Context, Result};
-use gitoxide_core::licenses::{render, CrateLicense};
 use gitoxide_core::OutputFormat;
+use gitoxide_core::licenses::{CrateLicense, render};
 
 use super::embedded;
 

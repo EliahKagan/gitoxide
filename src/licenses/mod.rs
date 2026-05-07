@@ -15,8 +15,8 @@
 pub mod cli;
 pub mod embedded;
 
-pub use embedded::{json, load, JSON_GZ};
+pub use embedded::{JSON_GZ, json, load};
 // Re-exported so callers inside the `gitoxide` crate can stay on
 // `crate::licenses::{Manifest, CrateLicense, LicenseFile}` without
 // knowing whether the types live here or in `gitoxide-core`.
-pub use gitoxide_core::licenses::{render_all, render_crate, render_summary, CrateLicense, LicenseFile, Manifest};
+pub use gitoxide_core::licenses::{CrateLicense, LicenseFile, Manifest, render_all, render_crate, render_summary};

@@ -7,7 +7,7 @@ use std::io::Write;
 
 use anyhow::{Context, Result};
 use gitoxide_core::OutputFormat;
-use gitoxide_core::licenses::{CrateLicense, render};
+use gitoxide_core::licenses::render;
 
 use super::embedded;
 
@@ -100,7 +100,6 @@ fn emit_full_json(out: &mut dyn Write) -> Result<()> {
 fn emit_single_crate_json(out: &mut dyn Write, name: &str) -> Result<()> {
     let manifest = embedded::load().context("decoding embedded license manifest")?;
     if let Some(crate_entry) = manifest.find(name) {
-        let crate_entry: &CrateLicense = crate_entry;
         serde_json::to_writer(&mut *out, crate_entry)
             .with_context(|| format!("encoding attribution for `{name}` as JSON"))?;
         writeln!(out)?;

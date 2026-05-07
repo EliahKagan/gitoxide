@@ -14,23 +14,25 @@ use super::embedded;
 #[derive(Debug, clap::Parser)]
 #[command(
     about = "Show license and attribution for third-party dependencies linked into this binary",
+    // NOTE: clap-derive truncates `long_about` at the first sentence boundary
+    // (see https://github.com/clap-rs/clap/issues/2854 and similar). A
+    // multi-sentence narrative here would be silently dropped on `--help`,
+    // so the per-mode guidance is intentionally pushed into the field-level
+    // doc comments below — those clap renders in full.
     long_about = "Show license, copyright, attribution, and notice information for every \
-                  third-party dependency statically linked into this binary.\n\n\
-                  With no arguments, prints a summary table covering third-party crates \
-                  and gitoxide's own workspace members that need their own attribution. \
-                  Pass `--verbose` to also list workspace members whose license and \
-                  authorship match the root `gitoxide` package's. With a single crate \
-                  name, prints that crate's full attribution. With `--all`, prints the \
-                  full concatenated attribution for every dependency, byte-identical to \
-                  the `THIRD-PARTY-LICENSES.txt` file shipped alongside the binary in \
-                  release archives."
+                  third-party dependency statically linked into this binary."
 )]
 pub struct Command {
     /// The name of a single third-party crate whose full attribution should
     /// be printed.
     ///
     /// When omitted, a summary table of all dependencies is shown — pass
-    /// `--all` to print every crate's full license text instead.
+    /// `--all` to print every crate's full license text instead. The
+    /// summary covers third-party crates and gitoxide's own workspace
+    /// members that need their own attribution; pass `--verbose` to also
+    /// list the workspace members whose license and authorship match the
+    /// root `gitoxide` package's. With a single crate name (this argument),
+    /// prints that crate's full attribution.
     pub crate_name: Option<String>,
     /// Print every crate's full attribution, byte-identical to the
     /// `THIRD-PARTY-LICENSES.txt` file shipped alongside the binary in the

@@ -75,5 +75,5 @@ pub mod render;
 pub mod spdx_texts;
 pub mod types;
 
-pub use render::{render_all, render_crate, render_summary};
+pub use render::{SummaryOptions, render_all, render_crate, render_summary, render_summary_with_options};
 pub use types::{CrateLicense, LicenseFile, Manifest};

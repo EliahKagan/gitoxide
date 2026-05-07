@@ -64,27 +64,21 @@ fn write_same_attribution_workspace_section(w: &mut (impl Write + ?Sized), manif
 pub fn render_summary(w: &mut (impl Write + ?Sized), manifest: &Manifest) -> io::Result<()> {
     write_header(w, manifest)?;
 
-    let name_width = manifest
-        .crates
-        .iter()
-        .map(|c| c.name.len())
-        .max()
-        .unwrap_or(4)
-        .max("NAME".len());
-    let version_width = manifest
-        .crates
-        .iter()
-        .map(|c| c.version.len())
-        .max()
-        .unwrap_or(7)
-        .max("VERSION".len());
-    let spdx_width = manifest
-        .crates
-        .iter()
-        .map(|c| c.spdx.as_deref().unwrap_or("(none)").len())
-        .max()
-        .unwrap_or(7)
-        .max("LICENSE".len());
+    // Column width = the widest cell or the header, whichever is longer.
+    // The fallback `default` only matters when `crates` is empty; pick a
+    // reasonable per-column floor so an empty table still aligns visually.
+    let col_width = |default: usize, header: &str, cell: fn(&CrateLicense) -> usize| -> usize {
+        manifest
+            .crates
+            .iter()
+            .map(cell)
+            .max()
+            .unwrap_or(default)
+            .max(header.len())
+    };
+    let name_width = col_width(4, "NAME", |c| c.name.len());
+    let version_width = col_width(7, "VERSION", |c| c.version.len());
+    let spdx_width = col_width(7, "LICENSE", |c| c.spdx.as_deref().unwrap_or("(none)").len());
 
     writeln!(
         w,

@@ -7,9 +7,10 @@
 //!
 //! The texts for `MIT` and `Apache-2.0` are reused from the repository's own
 //! top-level `LICENSE-MIT` / `LICENSE-APACHE` files to guarantee that a single
-//! canonical copy is maintained. The remaining identifiers return `None` at
-//! this stage and will be filled in before the SPDX fallback is wired into
-//! `build.rs` as the source of last resort for missing license text.
+//! canonical copy is maintained. Other identifiers return `None`; the
+//! `every_crate_has_at_least_one_license_file` test fails loudly if a real
+//! crate lands on this path with no LICENSE file in its source tree, so the
+//! table can be extended deliberately rather than silently.
 
 /// Canonical text of the MIT License, reused from the repository root.
 ///

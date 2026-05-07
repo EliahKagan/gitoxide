@@ -90,7 +90,7 @@ fn render_full_text(out: &mut dyn Write) -> Result<()> {
 
 fn emit_full_json(out: &mut dyn Write) -> Result<()> {
     // Stream the embedded JSON verbatim — it is already the canonical form
-    // and emitting it avoids an unnecessary parse+reserialise round-trip.
+    // and emitting it avoids an unnecessary parse+reserialize round-trip.
     let text = embedded::json().context("decompressing embedded license manifest")?;
     out.write_all(text.as_bytes())?;
     writeln!(out)?;

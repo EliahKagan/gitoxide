@@ -25,7 +25,7 @@ pub const JSON_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/third_party
 /// Decompress the embedded JSON into an owned UTF-8 string.
 ///
 /// This is exposed so the `licenses --format json` subcommand can stream the
-/// manifest verbatim without re-serialising a parsed `Manifest`.
+/// manifest verbatim without re-serializing a parsed `Manifest`.
 pub fn json() -> io::Result<String> {
     let bytes = miniz_oxide::inflate::decompress_to_vec_zlib(JSON_GZ)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("inflate failed: {e:?}")))?;
@@ -71,7 +71,7 @@ mod tests {
         let manifest = load().expect("embedded manifest must round-trip through serde");
         // Either the real manifest (many crates) or a stub (zero crates,
         // generated_at starting with "stub;"). Both are acceptable; anything
-        // that fails to deserialise is not.
+        // that fails to deserialize is not.
         assert!(!manifest.target_triple.is_empty() || manifest.generated_at.starts_with("stub"));
     }
 

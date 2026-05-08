@@ -377,6 +377,29 @@ fn unknown_crate_name_in_json_path_also_exits_nonzero() {
     );
 }
 
+/// The human and JSON output paths share the same inner phrasing for the
+/// "unknown crate name" error — both reference the missing crate with
+/// backtick quoting. The wording previously diverged (the human path used
+/// `{name:?}`-style `"name"` quoting; the JSON path used backticks); a
+/// regression that re-introduced that drift would surface here.
+#[test]
+fn unknown_crate_error_uses_backtick_form_in_both_paths() {
+    let bogus = "test-no-such-crate-xyzzy";
+    let human = run_licenses_raw(env!("CARGO_BIN_EXE_gix"), &[bogus]);
+    let json = run_licenses_raw(env!("CARGO_BIN_EXE_gix"), &["--format", "json", bogus]);
+    let human_stderr = String::from_utf8_lossy(&human.stderr);
+    let json_stderr = String::from_utf8_lossy(&json.stderr);
+    let backticked = format!("`{bogus}`");
+    assert!(
+        human_stderr.contains(&backticked),
+        "human-mode error should reference the crate with backticks (`{bogus}`):\n{human_stderr}"
+    );
+    assert!(
+        json_stderr.contains(&backticked),
+        "json-mode error should reference the crate with backticks (`{bogus}`):\n{json_stderr}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // JSON output end-to-end — the unit tests in `src/licenses/cli.rs` cover
 // the JSON shape against synthetic manifests, but never against the real

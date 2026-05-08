@@ -586,6 +586,40 @@ fn binary_summary_header_has_no_notes_column() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// JSON-mode no-ops. `--all` and `--verbose` are intentionally silent no-ops
+// in `--format json` — the full embedded manifest IS the canonical "all"
+// output, and JSON has no summary/full distinction for `--verbose` to
+// expand. Pin those equivalences so a future change that errors on the
+// combination (or, worse, alters the output) shows up here.
+
+/// `gix licenses --format json --all` is documented as redundant and so
+/// must produce the same bytes as `gix licenses --format json`. A change
+/// that errored on the combination, or that altered the JSON output when
+/// `--all` is set, would surface here.
+#[test]
+fn json_mode_all_is_a_silent_noop() {
+    let plain = run_gix_licenses(&["--format", "json"]);
+    let with_all = run_gix_licenses(&["--format", "json", "--all"]);
+    assert_eq!(
+        plain, with_all,
+        "`--format json --all` must produce byte-identical output to `--format json`"
+    );
+}
+
+/// `gix licenses --format json --verbose` is documented as redundant. The
+/// JSON manifest already carries `workspace_members_same_attribution`
+/// directly, so `--verbose` has nothing extra to add. Pin the equivalence.
+#[test]
+fn json_mode_verbose_is_a_silent_noop() {
+    let plain = run_gix_licenses(&["--format", "json"]);
+    let with_verbose = run_gix_licenses(&["--format", "json", "--verbose"]);
+    assert_eq!(
+        plain, with_verbose,
+        "`--format json --verbose` must produce byte-identical output to `--format json`"
+    );
+}
+
 /// In the real embedded manifest, any data row that carries an `[*]` or
 /// `[!]` mark must have the mark separated from the rest of the row by
 /// exactly one space — i.e. directly after the SPDX expression, not padded

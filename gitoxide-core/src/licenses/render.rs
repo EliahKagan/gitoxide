@@ -39,6 +39,7 @@
 //! None of these functions allocate a full string copy of the manifest; they
 //! stream formatted output through the [`Write`] sink.
 
+use std::borrow::Cow;
 use std::io::{self, Write};
 
 use super::spdx_texts;
@@ -74,18 +75,22 @@ const MISSING_TEXT_MARK: &str = "[!]";
 /// Compact footnote string for the notes column of a single row. Combines
 /// applicable marks with a space separator. Returns an empty string when
 /// the crate carries no marks at all.
-fn marks_for(c: &CrateLicense) -> String {
-    let mut s = String::new();
-    if c.used_spdx_fallback {
-        s.push_str(SPDX_FALLBACK_MARK);
+///
+/// Returns `Cow<'static, str>` so the common no-marks and single-mark cases
+/// borrow a `&'static str` and skip allocation entirely. The both-marks
+/// case is the only branch that allocates, and `used_spdx_fallback` and
+/// `is_missing_text()` are already mutually exclusive in the build pipeline
+/// (a crate with no source license file either gets a bundled SPDX fallback
+/// — turning `used_spdx_fallback` on — or is left with no files at all,
+/// turning `is_missing_text()` on; never both). The both-marks arm is kept
+/// for defensiveness against future manifest sources that might set both.
+fn marks_for(c: &CrateLicense) -> Cow<'static, str> {
+    match (c.used_spdx_fallback, c.is_missing_text()) {
+        (false, false) => Cow::Borrowed(""),
+        (true, false) => Cow::Borrowed(SPDX_FALLBACK_MARK),
+        (false, true) => Cow::Borrowed(MISSING_TEXT_MARK),
+        (true, true) => Cow::Owned(format!("{SPDX_FALLBACK_MARK} {MISSING_TEXT_MARK}")),
     }
-    if c.is_missing_text() {
-        if !s.is_empty() {
-            s.push(' ');
-        }
-        s.push_str(MISSING_TEXT_MARK);
-    }
-    s
 }
 
 /// Write a column-aligned table for one of the per-section crate slices in

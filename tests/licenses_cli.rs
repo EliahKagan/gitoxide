@@ -165,11 +165,12 @@ fn summary_footer_appears_after_all_sections() {
     );
 }
 
-/// The summary's notes column must not carry the verbose pre-footnote
-/// phrasing ("bundled SPDX fallback", "no license text available").
-/// Compact `[*]`/`[!]` marks plus a legend is the new contract.
+/// The summary must not carry the verbose pre-footnote phrasing
+/// ("bundled SPDX fallback", "no license text available"). Compact
+/// `[*]`/`[!]` marks appended inline after the SPDX expression, plus a
+/// legend after the data tables, is the contract.
 #[test]
-fn summary_notes_column_uses_footnote_marks_not_verbose_phrases() {
+fn summary_uses_inline_footnote_marks_not_verbose_phrases() {
     let out = run_gix_licenses(&[]);
     assert!(
         !out.contains("bundled SPDX fallback"),

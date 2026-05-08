@@ -7,10 +7,9 @@
 //!   true third-party crates, and gitoxide's own workspace members that
 //!   need their own attribution (because their license or authorship
 //!   differs from the root). Followed by a legend (only when any crate
-//!   carries a footnote mark in the notes column) and a footer pointing
-//!   the reader at `gix licenses <CRATE>` and `--all`. Convenience
-//!   wrapper around [`render_summary_with_options`] with default
-//!   options.
+//!   carries a footnote mark) and a footer pointing the reader at
+//!   `gix licenses <CRATE>` and `--all`. Convenience wrapper around
+//!   [`render_summary_with_options`] with default options.
 //! * [`render_summary_with_options`] — identical to [`render_summary`]
 //!   but takes a [`SummaryOptions`] knob. With [`SummaryOptions::verbose`]
 //!   set, a third names-only listing is appended: workspace members
@@ -32,9 +31,11 @@
 //!   output and the archive file match byte-for-byte for a given build.
 //!
 //! Footnote marks `[*]` (SPDX fallback) and `[!]` (no license text)
-//! appear in the summary table's notes column for crates that carry the
-//! corresponding flag, and a legend explaining each used mark is printed
-//! between the data tables and the footer guidance.
+//! are appended inline after the SPDX expression for crates that carry
+//! the corresponding flag — no separate notes column, so the table
+//! stays narrow enough to read on an 80-column terminal in the common
+//! no-marks case. A legend explaining each used mark is printed between
+//! the data tables and the footer guidance.
 //!
 //! None of these functions allocate a full string copy of the manifest; they
 //! stream formatted output through the [`Write`] sink.
@@ -72,9 +73,9 @@ const SPDX_FALLBACK_MARK: &str = "[*]";
 /// discovered file nor a bundled SPDX fallback.
 const MISSING_TEXT_MARK: &str = "[!]";
 
-/// Compact footnote string for the notes column of a single row. Combines
-/// applicable marks with a space separator. Returns an empty string when
-/// the crate carries no marks at all.
+/// Compact footnote string appended inline after a row's SPDX expression.
+/// Combines applicable marks with a space separator. Returns an empty
+/// string when the crate carries no marks at all.
 ///
 /// Returns `Cow<'static, str>` so the common no-marks and single-mark cases
 /// borrow a `&'static str` and skip allocation entirely. The both-marks
@@ -98,6 +99,11 @@ fn marks_for(c: &CrateLicense) -> Cow<'static, str> {
 /// section aligns within itself; this keeps the third-party section's name
 /// column from being padded out to fit a long workspace-member name from a
 /// different section.
+///
+/// LICENSE is the last column and so is unpadded — content runs off to the
+/// right rather than being padded to a uniform width. Footnote marks (when
+/// applicable) are appended inline after the SPDX expression, separated by
+/// a space, so the table needs no separate notes column.
 fn write_summary_table(w: &mut (impl Write + ?Sized), crates: &[&CrateLicense]) -> io::Result<()> {
     if crates.is_empty() {
         return Ok(());
@@ -116,26 +122,32 @@ fn write_summary_table(w: &mut (impl Write + ?Sized), crates: &[&CrateLicense]) 
     };
     let name_width = col_width(4, "NAME", |c| c.name.len());
     let version_width = col_width(7, "VERSION", |c| c.version.len());
-    let spdx_width = col_width(7, "LICENSE", |c| c.spdx.as_deref().unwrap_or("(none)").len());
 
     writeln!(
         w,
-        "{name:<name_width$}  {version:<version_width$}  {spdx:<spdx_width$}  NOTES",
+        "{name:<name_width$}  {version:<version_width$}  LICENSE",
         name = "NAME",
         version = "VERSION",
-        spdx = "LICENSE",
     )?;
 
     for c in crates {
         let spdx = c.spdx.as_deref().unwrap_or("(none)");
-        writeln!(
-            w,
-            "{name:<name_width$}  {version:<version_width$}  {spdx:<spdx_width$}  {notes}",
-            name = c.name,
-            version = c.version,
-            spdx = spdx,
-            notes = marks_for(c),
-        )?;
+        let marks = marks_for(c);
+        if marks.is_empty() {
+            writeln!(
+                w,
+                "{name:<name_width$}  {version:<version_width$}  {spdx}",
+                name = c.name,
+                version = c.version,
+            )?;
+        } else {
+            writeln!(
+                w,
+                "{name:<name_width$}  {version:<version_width$}  {spdx} {marks}",
+                name = c.name,
+                version = c.version,
+            )?;
+        }
     }
     Ok(())
 }
@@ -520,10 +532,11 @@ mod tests {
         assert!(out.contains("gix-imara-diff"));
     }
 
-    /// The notes column uses footnote-style marks (`[!]` for missing
-    /// license text) rather than full-prose phrases, so the table stays
-    /// compact even when many crates carry notes. Wide prose pushed the
-    /// LICENSE column off-screen on standard 80-column terminals.
+    /// The summary uses compact footnote-style marks (`[!]` for missing
+    /// license text) appended inline after the SPDX expression, rather
+    /// than full-prose phrases, so the table stays narrow enough to read
+    /// on an 80-column terminal. Wide prose pushed the LICENSE column
+    /// off-screen on prior implementations.
     #[test]
     fn summary_marks_crates_with_no_license_text() {
         let out = render_to_string(&sample_manifest(), render_summary);
@@ -537,12 +550,12 @@ mod tests {
         );
         assert!(
             !mpl_line.contains("no license text available"),
-            "footnote-style mark should replace literal text in the notes column:\n{mpl_line}"
+            "footnote-style mark should replace literal text:\n{mpl_line}"
         );
     }
 
     /// Crates with both their license file present and no SPDX fallback
-    /// carry no marks in the notes column at all.
+    /// carry no marks at all.
     #[test]
     fn summary_does_not_mark_present_license() {
         let out = render_to_string(&sample_manifest(), render_summary);
@@ -557,10 +570,10 @@ mod tests {
         );
     }
 
-    /// SPDX-fallback crates are marked with `[*]` in the notes column. The
-    /// canonical bundled text is what the per-crate view shows, but in the
-    /// summary view a compact mark conveys the same diagnostic without
-    /// stretching the table.
+    /// SPDX-fallback crates are marked with `[*]` appended after the SPDX
+    /// expression. The canonical bundled text is what the per-crate view
+    /// shows, but in the summary view a compact inline mark conveys the
+    /// same diagnostic without stretching the table.
     #[test]
     fn summary_marks_spdx_fallback_with_asterisk() {
         let mut manifest = sample_manifest();
@@ -576,7 +589,7 @@ mod tests {
         );
         assert!(
             !anyhow_line.contains("bundled SPDX fallback"),
-            "footnote-style mark should replace literal text in the notes column:\n{anyhow_line}"
+            "footnote-style mark should replace literal text:\n{anyhow_line}"
         );
     }
 

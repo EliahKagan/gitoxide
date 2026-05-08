@@ -384,9 +384,13 @@ pub fn render_crate(w: &mut (impl Write + ?Sized), manifest: &Manifest, name: &s
             if manifest.is_covered_by_root_license(name) {
                 return write_root_license_attribution(w, name);
             }
+            // Match the JSON path's wording (`emit_single_crate_json_against`
+            // uses `anyhow::bail!("no dependency named `{name}` in the
+            // manifest")`) so a user who flips `--format` between human and
+            // JSON sees the same inner error message.
             Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("no dependency named {name:?} in the manifest"),
+                format!("no dependency named `{name}` in the manifest"),
             ))
         }
         1 => write_crate(w, hits[0]),

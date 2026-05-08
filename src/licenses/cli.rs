@@ -25,6 +25,7 @@ use super::embedded;
 )]
 pub struct Command {
     /// The name of a single crate whose full attribution should be printed.
+    ///
     /// May be a third-party dependency, a workspace member with separate
     /// attribution, or a workspace member whose license and authorship
     /// match the root `gitoxide` package's (in which case the root's
@@ -49,12 +50,13 @@ pub struct Command {
     #[clap(long, conflicts_with = "crate_name")]
     pub all: bool,
     /// In the default summary view, also list workspace members whose
-    /// license and authorship match the root `gitoxide` package's. Has no
-    /// effect when `--all` is set (the full attribution always includes
-    /// that listing), when a crate name argument is given, or in `--format
-    /// json` mode (the JSON manifest already carries
-    /// `workspace_members_same_attribution` directly, with no
-    /// summary/full distinction).
+    /// license and authorship match the root `gitoxide` package's.
+    ///
+    /// Has no effect when `--all` is set (the full attribution always
+    /// includes that listing), when a crate name argument is given, or in
+    /// `--format json` mode (the JSON manifest already carries
+    /// `workspace_members_same_attribution` directly, with no summary/full
+    /// distinction).
     #[clap(long, short = 'v')]
     pub verbose: bool,
     /// Override the output format for this subcommand specifically.

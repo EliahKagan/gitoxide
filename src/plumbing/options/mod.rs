@@ -161,7 +161,8 @@ pub enum Subcommands {
     /// Print paths relevant to the Git installation.
     Env,
     /// Show license, copyright, attribution, and notice information for
-    /// every third-party dependency statically linked into this binary.
+    /// every crate statically linked into this binary — third-party
+    /// dependencies as well as gitoxide's own workspace members.
     Licenses(crate::licenses::cli::Command),
     Diff(diff::Platform),
     Log(log::Platform),

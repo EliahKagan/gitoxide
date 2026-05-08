@@ -339,4 +339,46 @@ mod tests {
         let files = entry["files"].as_array().unwrap();
         assert_eq!(files.len(), 2);
     }
+
+    /// `--all` is mutually exclusive with the positional crate name —
+    /// clap-derive's `conflicts_with = "crate_name"` on the `all` field
+    /// makes the parser reject the combination at parse time, so `run()`
+    /// never sees a (true, Some(_)) state. A regression that dropped the
+    /// attribute would silently take the `(true, _)` arm and ignore the
+    /// crate name, which is the least-surprise violation we want to
+    /// keep ruled out.
+    #[test]
+    fn all_with_crate_name_fails_to_parse() {
+        use clap::Parser;
+        let err = Command::try_parse_from(["licenses", "--all", "anyhow"])
+            .expect_err("`--all <CRATE_NAME>` must fail to parse, not silently succeed");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--all") && msg.contains("CRATE_NAME"),
+            "clap error should reference both `--all` and the positional argument: {msg}"
+        );
+    }
+
+    /// Negative control for [`all_with_crate_name_fails_to_parse`]: `--all`
+    /// alone (the canonical full-attribution invocation) must continue to
+    /// parse successfully. Verifies the conflict attribute fires only on
+    /// the both-args case and not on `--all` alone.
+    #[test]
+    fn all_alone_parses_successfully() {
+        use clap::Parser;
+        let cmd = Command::try_parse_from(["licenses", "--all"]).expect("`--all` alone must parse");
+        assert!(cmd.all);
+        assert!(cmd.crate_name.is_none());
+    }
+
+    /// Negative control for [`all_with_crate_name_fails_to_parse`]: a
+    /// positional crate name without `--all` must continue to parse. The
+    /// conflict is symmetric, so this validates the other side.
+    #[test]
+    fn crate_name_alone_parses_successfully() {
+        use clap::Parser;
+        let cmd = Command::try_parse_from(["licenses", "anyhow"]).expect("crate-name alone must parse");
+        assert!(!cmd.all);
+        assert_eq!(cmd.crate_name.as_deref(), Some("anyhow"));
+    }
 }

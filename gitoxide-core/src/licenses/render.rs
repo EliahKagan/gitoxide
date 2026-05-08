@@ -1061,4 +1061,60 @@ mod tests {
             "gix-imara-diff's license text should appear under separate-attribution workspace section"
         );
     }
+
+    /// The summary table header must announce only `NAME`, `VERSION`, and
+    /// `LICENSE` — not a separate `NOTES` column. The design appends marks
+    /// inline after the SPDX expression instead, so a regression that re-
+    /// introduced a notes column would push the marks away from the SPDX
+    /// they qualify and break the 80-column-terminal width budget that
+    /// motivated the inline form.
+    #[test]
+    fn summary_header_has_no_notes_column() {
+        let out = render_to_string(&sample_manifest(), render_summary);
+        let header = out
+            .lines()
+            .find(|l| l.starts_with("NAME"))
+            .expect("summary header line");
+        assert!(
+            header.contains("LICENSE"),
+            "header should still announce the LICENSE column:\n{header}"
+        );
+        assert!(
+            !header.contains("NOTES"),
+            "header must not announce a NOTES column:\n{header}"
+        );
+    }
+
+    /// Footnote marks (`[*]`, `[!]`) must appear inline directly after the
+    /// SPDX expression, separated by exactly one space — not in a separate
+    /// column (which would put many spaces of padding between the SPDX and
+    /// the mark for crates whose SPDX is shorter than the column width).
+    /// This pins the user-specified contract that the SPDX expression and
+    /// any qualification of it live in one field, in the LICENSE column.
+    #[test]
+    fn footnote_marks_are_inline_with_the_spdx_expression() {
+        let mut manifest = sample_manifest();
+        // anyhow's SPDX is "MIT OR Apache-2.0"; flag it as SPDX-fallback so
+        // the [*] mark fires.
+        manifest.crates[0].used_spdx_fallback = true;
+        let out = render_to_string(&manifest, render_summary);
+
+        let anyhow_line = out.lines().find(|l| l.starts_with("anyhow")).expect("anyhow row");
+        assert!(
+            anyhow_line.contains("MIT OR Apache-2.0 [*]"),
+            "[*] mark must appear inline directly after the SPDX expression \
+             with exactly one space separator:\n{anyhow_line}"
+        );
+
+        // mpl-example has no license file → [!] mark, same adjacency rule.
+        let mpl_line = out
+            .lines()
+            .find(|l| l.starts_with("mpl-example"))
+            .expect("mpl-example row");
+        assert!(
+            mpl_line.contains("MPL-2.0 [!]"),
+            "[!] mark must appear inline directly after the SPDX expression \
+             with exactly one space separator:\n{mpl_line}"
+        );
+    }
 }

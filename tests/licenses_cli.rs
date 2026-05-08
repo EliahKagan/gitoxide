@@ -519,3 +519,96 @@ fn help_describes_summary_single_crate_and_all_modes() {
         "--help should explain the --all mode by referencing THIRD-PARTY-LICENSES.txt:\n{help}"
     );
 }
+
+/// `gix licenses --help` must acknowledge that the subcommand's coverage
+/// extends to gitoxide's own workspace members, not only third-party
+/// dependencies. The earlier wording said "third-party dependencies" only,
+/// which elided the workspace-member groups (separate-attribution and
+/// same-attribution-as-root) that the subcommand also surfaces. A
+/// regression that narrowed the help back would mislead readers about
+/// what the subcommand actually shows.
+#[test]
+fn help_text_acknowledges_workspace_members_not_just_third_party() {
+    let output = run_licenses_raw(env!("CARGO_BIN_EXE_gix"), &["--help"]);
+    let help = String::from_utf8(output.stdout).expect("--help is valid UTF-8");
+    assert!(
+        help.to_lowercase().contains("workspace member"),
+        "--help should describe workspace members alongside third-party deps:\n{help}"
+    );
+    assert!(
+        help.to_lowercase().contains("third-party"),
+        "--help should still mention third-party dependencies:\n{help}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Mutual exclusion of `--all` and the positional crate name. The clap parser
+// must reject the combination — a silent take-the-`--all`-arm-and-ignore-
+// the-name regression would mislead users.
+
+/// `gix licenses --all <CRATE>` must fail at parse time with a clear error
+/// mentioning both arguments. A unit-level analogue lives in
+/// `src/licenses/cli.rs::tests::all_with_crate_name_fails_to_parse`; this
+/// integration test confirms the contract is honored end-to-end through
+/// the actual binary's clap configuration.
+#[test]
+fn all_and_crate_name_conflict_at_parse_time() {
+    let output = run_licenses_raw(env!("CARGO_BIN_EXE_gix"), &["--all", "anyhow"]);
+    assert!(
+        !output.status.success(),
+        "`--all <CRATE>` should error at the binary level, not silently succeed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--all") && stderr.contains("CRATE_NAME"),
+        "binary's error message should mention both `--all` and CRATE_NAME:\n{stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Inline footnote marks at the binary level. Unit-level analogues live in
+// `gitoxide-core/src/licenses/render.rs::tests::summary_header_has_no_notes_column`
+// and `footnote_marks_are_inline_with_the_spdx_expression`. The integration
+// tests pin the same contracts against the real embedded manifest.
+
+/// At the binary level too, the summary table must not announce a NOTES
+/// column. The marks live inline after the SPDX expression.
+#[test]
+fn binary_summary_header_has_no_notes_column() {
+    let out = run_gix_licenses(&[]);
+    let header = out
+        .lines()
+        .find(|l| l.starts_with("NAME"))
+        .expect("summary header line in binary output");
+    assert!(
+        !header.contains("NOTES"),
+        "binary's summary header must not announce a NOTES column:\n{header}"
+    );
+}
+
+/// In the real embedded manifest, any data row that carries an `[*]` or
+/// `[!]` mark must have the mark separated from the rest of the row by
+/// exactly one space — i.e. directly after the SPDX expression, not padded
+/// across a column gap. Skips legend lines (which start with the mark
+/// itself) since the adjacency contract applies only to data rows.
+#[test]
+fn inline_marks_in_real_manifest_are_directly_adjacent_to_spdx() {
+    let out = run_gix_licenses(&[]);
+    for line in out.lines() {
+        // Legend lines begin with the mark (e.g. `[*] license text was...`)
+        // — skip them; the adjacency rule applies only to data rows.
+        if line.trim_start().starts_with('[') {
+            continue;
+        }
+        for mark in &["[*]", "[!]"] {
+            if let Some(idx) = line.find(mark) {
+                let bytes = line.as_bytes();
+                assert!(
+                    idx >= 2 && bytes[idx - 1] == b' ' && bytes[idx - 2] != b' ',
+                    "{mark} mark on a data row must follow exactly one space \
+                     after the SPDX expression (no column padding):\n{line}\n(idx={idx})"
+                );
+            }
+        }
+    }
+}

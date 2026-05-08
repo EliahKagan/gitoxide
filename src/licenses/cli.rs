@@ -42,12 +42,19 @@ pub struct Command {
     ///
     /// Mutually exclusive with naming a specific crate: `--all` means
     /// "every crate" and the specific-crate argument means "this one."
+    /// In `--format json` mode this flag is redundant — the no-name JSON
+    /// output is already the full embedded manifest, so `--format json
+    /// --all` is equivalent to `--format json` — but accepted for the
+    /// convenience of users who reach for `--all` reflexively.
     #[clap(long, conflicts_with = "crate_name")]
     pub all: bool,
     /// In the default summary view, also list workspace members whose
     /// license and authorship match the root `gitoxide` package's. Has no
     /// effect when `--all` is set (the full attribution always includes
-    /// that listing) or when a crate name argument is given.
+    /// that listing), when a crate name argument is given, or in `--format
+    /// json` mode (the JSON manifest already carries
+    /// `workspace_members_same_attribution` directly, with no
+    /// summary/full distinction).
     #[clap(long, short = 'v')]
     pub verbose: bool,
     /// Override the output format for this subcommand specifically.
@@ -73,16 +80,23 @@ pub struct Command {
 /// regardless of whether that feature is active.
 pub fn run(out: &mut dyn Write, inherited_format: OutputFormat, args: Command) -> Result<()> {
     let format = args.format.unwrap_or(inherited_format);
-    if format != OutputFormat::Human {
-        return match args.crate_name.as_deref() {
+    // Exhaustive match on `OutputFormat` so a future variant (e.g. a `Yaml`
+    // or `Toml` arm) becomes a compile error here rather than being silently
+    // routed to the JSON branch by an `if !=`-style fall-through.
+    match format {
+        OutputFormat::Human => match (args.all, args.crate_name.as_deref()) {
+            (true, _) => render_full_text(out),
+            (false, Some(name)) => render_one_crate(out, name),
+            (false, None) => render_summary_table(out, args.verbose),
+        },
+        OutputFormat::Json => match args.crate_name.as_deref() {
+            // `--all` and `--verbose` are intentionally ignored in JSON mode
+            // — see their field docs above. The full embedded manifest IS
+            // the canonical "all" output, and JSON has no summary/full
+            // distinction for `--verbose` to expand.
             None => emit_full_json(out),
             Some(name) => emit_single_crate_json(out, name),
-        };
-    }
-    match (args.all, args.crate_name.as_deref()) {
-        (true, _) => render_full_text(out),
-        (false, Some(name)) => render_one_crate(out, name),
-        (false, None) => render_summary_table(out, args.verbose),
+        },
     }
 }
 
@@ -165,6 +179,18 @@ fn emit_single_crate_json_against(
 /// have a concrete value for (version, repository, homepage, authors)
 /// are left empty/None — consumers who need them can look them up
 /// against the rest of the manifest or against cargo metadata.
+///
+/// `is_workspace_member` here marks workspace membership *as such*: the
+/// flag is `true` for any same-attribution workspace member (which IS a
+/// workspace member, just with attribution matching the root) and `false`
+/// for the root `gitoxide` package itself. Note that this is the same
+/// flag set on entries in [`Manifest::crates`] for workspace members
+/// with separate attribution — the synthesized entry's content (matching
+/// the root's MIT and Apache-2.0 text) is what disambiguates the two
+/// cases at the type level. A consumer that needs to distinguish
+/// programmatically should cross-reference
+/// [`Manifest::workspace_members_same_attribution`], where every same-
+/// attribution member appears by name.
 fn synthesized_root_entry(name: &str) -> gitoxide_core::licenses::CrateLicense {
     use gitoxide_core::licenses::{CrateLicense, LicenseFile, spdx_texts};
     CrateLicense {

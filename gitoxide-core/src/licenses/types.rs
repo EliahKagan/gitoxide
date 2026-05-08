@@ -48,13 +48,25 @@ pub struct CrateLicense {
     #[serde(default)]
     pub used_spdx_fallback: bool,
     /// `true` if this entry describes a member of gitoxide's own workspace
-    /// rather than a third-party dependency. Workspace members appear in this
-    /// list (rather than in [`Manifest::workspace_members_same_attribution`])
-    /// when their license expression or authorship differs from the root
-    /// `gitoxide` package and they therefore need their own attribution
-    /// entry. Synthetic entries the build script may inject (such as the
-    /// Rust standard library) are neither workspace members nor third-party
-    /// crates from cargo's perspective and have this set to `false`.
+    /// rather than a third-party dependency. Workspace members appear in
+    /// [`Manifest::crates`] (rather than in
+    /// [`Manifest::workspace_members_same_attribution`]) when their license
+    /// expression or authorship differs from the root `gitoxide` package
+    /// and they therefore need their own attribution entry. Synthetic
+    /// entries the build script may inject (such as the Rust standard
+    /// library) are neither workspace members nor third-party crates from
+    /// cargo's perspective and have this set to `false`.
+    ///
+    /// A second context: `gix licenses --format json <NAME>` also
+    /// synthesizes a [`CrateLicense`] for same-attribution workspace
+    /// members and for the root `gitoxide` package itself. There the flag
+    /// reports workspace-membership-period — `true` for same-attribution
+    /// members (which ARE workspace members), `false` for the root. A
+    /// consumer that needs to distinguish *separate-attribution* workspace
+    /// members (the entries in [`Manifest::crates`] with this flag set)
+    /// from *same-attribution* ones should cross-reference
+    /// [`Manifest::workspace_members_same_attribution`], where every
+    /// same-attribution member appears by name.
     #[serde(default)]
     pub is_workspace_member: bool,
 }

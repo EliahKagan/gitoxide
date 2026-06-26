@@ -25,7 +25,7 @@ jobs:
     strategy:
       matrix:
         os:
-          - windows-2025
+          - windows-2025-vs2026
           - ubuntu-latest
 
     runs-on: ${{ matrix.os }}
@@ -259,9 +259,9 @@ jobs:
     strategy:
       matrix:
         os:
-          - windows-latest
+          - windows-2025-vs2026
           - windows-11-arm
-          - macos-latest
+          - macos-26
           - ubuntu-latest
           - ubuntu-24.04-arm
         include:
@@ -331,7 +331,7 @@ jobs:
     strategy:
       matrix:
         os:
-          - windows-latest
+          - windows-2025-vs2026
           - windows-11-arm
         include:
           - test-args: ""
@@ -450,7 +450,7 @@ jobs:
         run: cargo nextest run --workspace --no-fail-fast --exclude gix-error
 
   test-32bit-windows-size-doc:
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
 
     env:
       TARGET: i686-pc-windows-msvc

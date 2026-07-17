@@ -39,12 +39,12 @@ function snapshot_dir_for () {
 }
 
 function append_existing_path () {
-  local -n result=$1
+  local -n path_list=$1
   local path="${2:-}"
 
   [[ -n $path ]] || return 0
   if [[ -e $path || -L $path ]]; then
-    result+=("$path")
+    path_list+=("$path")
   fi
 }
 
@@ -181,7 +181,7 @@ diagnostics_dir = os.environ.get("GITOXIDE_DIAGNOSTICS_DIR", "")
 diagnostics_dir = os.path.realpath(diagnostics_dir) if diagnostics_dir else ""
 
 
-def kind_for(mode: int) -> str:
+def classify_file_type(mode: int) -> str:
     if stat.S_ISREG(mode):
         return "file"
     if stat.S_ISLNK(mode):
@@ -203,7 +203,7 @@ def record(path: str, st: os.stat_result, root: str) -> dict[str, object]:
     return {
         "root": root,
         "path": path,
-        "kind": kind_for(st.st_mode),
+        "kind": classify_file_type(st.st_mode),
         "mode": st.st_mode,
         "device": st.st_dev,
         "inode": st.st_ino,
@@ -232,7 +232,7 @@ with open(output, "w", encoding="utf-8") as out:
         except FileNotFoundError:
             continue
         except OSError as exc:
-            print(f"warning: unable to stat root {root!r}: {exc}", file=sys.stderr)
+            print(f"warning: unable to access root {root!r}: {exc}", file=sys.stderr)
             continue
 
         root_dev = root_stat.st_dev
@@ -250,7 +250,7 @@ with open(output, "w", encoding="utf-8") as out:
                 try:
                     candidate_stat = os.lstat(candidate)
                 except OSError as exc:
-                    print(f"warning: unable to stat directory {candidate!r}: {exc}", file=sys.stderr)
+                    print(f"warning: unable to access directory {candidate!r}: {exc}", file=sys.stderr)
                     continue
                 if stat.S_ISLNK(candidate_stat.st_mode):
                     out.write(json.dumps(record(candidate, candidate_stat, root), sort_keys=True))
@@ -270,7 +270,7 @@ with open(output, "w", encoding="utf-8") as out:
                 try:
                     st = os.lstat(path)
                 except OSError as exc:
-                    print(f"warning: unable to stat file {path!r}: {exc}", file=sys.stderr)
+                    print(f"warning: unable to access file {path!r}: {exc}", file=sys.stderr)
                     continue
                 if st.st_dev != root_dev:
                     continue
@@ -352,7 +352,7 @@ base_path, final_path, report_dir, limit_arg = sys.argv[1:]
 limit = int(limit_arg)
 
 
-def load(path: str) -> dict[str, dict[str, Any]]:
+def load_inventory(path: str) -> dict[str, dict[str, Any]]:
     entries: dict[str, dict[str, Any]] = {}
     with open(path, encoding="utf-8") as handle:
         for line in handle:
@@ -379,8 +379,8 @@ def write_jsonl(filename: str, rows: list[dict[str, Any]]) -> None:
             handle.write("\n")
 
 
-base = load(base_path)
-final = load(final_path)
+base = load_inventory(base_path)
+final = load_inventory(final_path)
 
 largest_final = sorted(final.values(), key=sort_key, reverse=True)
 
@@ -429,7 +429,7 @@ summary_lines = [
     "",
 ]
 
-def render(title: str, rows: list[dict[str, Any]], key: str) -> None:
+def render_summary_section(title: str, rows: list[dict[str, Any]], key: str) -> None:
     summary_lines.append(title)
     if not rows:
         summary_lines.append("  (none)")
@@ -442,8 +442,8 @@ def render(title: str, rows: list[dict[str, Any]], key: str) -> None:
     summary_lines.append("")
 
 
-render("Top final files:", largest_final, "allocated_bytes")
-render("Top new files:", new_files, "allocated_bytes")
+render_summary_section("Top final files:", largest_final, "allocated_bytes")
+render_summary_section("Top new files:", new_files, "allocated_bytes")
 
 summary_lines.append("Top grown files:")
 if not grown_files:

@@ -237,9 +237,8 @@ with open(output, "w", encoding="utf-8") as out:
 
         root_dev = root_stat.st_dev
         if not stat.S_ISDIR(root_stat.st_mode):
-            if kind_for(root_stat.st_mode) != "dir":
-                out.write(json.dumps(record(root, root_stat, root), sort_keys=True))
-                out.write("\n")
+            out.write(json.dumps(record(root, root_stat, root), sort_keys=True))
+            out.write("\n")
             continue
 
         for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
@@ -252,6 +251,10 @@ with open(output, "w", encoding="utf-8") as out:
                     candidate_stat = os.lstat(candidate)
                 except OSError as exc:
                     print(f"warning: unable to stat directory {candidate!r}: {exc}", file=sys.stderr)
+                    continue
+                if stat.S_ISLNK(candidate_stat.st_mode):
+                    out.write(json.dumps(record(candidate, candidate_stat, root), sort_keys=True))
+                    out.write("\n")
                     continue
                 if not stat.S_ISDIR(candidate_stat.st_mode):
                     continue
@@ -270,8 +273,6 @@ with open(output, "w", encoding="utf-8") as out:
                     print(f"warning: unable to stat file {path!r}: {exc}", file=sys.stderr)
                     continue
                 if st.st_dev != root_dev:
-                    continue
-                if kind_for(st.st_mode) == "dir":
                     continue
                 out.write(json.dumps(record(path, st, root), sort_keys=True))
                 out.write("\n")
@@ -320,7 +321,9 @@ function collect_snapshot () {
       roots+=("$root")
     done < <(inventory_roots)
     write_inventory_roots "$dir/inventory-roots.txt"
+    printf 'ok\n' >"$dir/inventory-status.txt"
     if ! write_inventory "$dir/inventory.jsonl" "${roots[@]}" 2>"$dir/inventory-errors.txt"; then
+      printf 'failed\n' >"$dir/inventory-status.txt"
       log "inventory collection for '${label}' failed; see $dir/inventory-errors.txt"
     fi
   fi
@@ -481,6 +484,12 @@ function print_concise_summary () {
   if [[ -f $dir/explicit-sizes.tsv ]]; then
     printf '%s\n' '--- largest tracked directories/filesystems (bytes) ---'
     sed -n '1,20p' "$dir/explicit-sizes.tsv"
+  fi
+
+  if [[ -f $dir/inventory-status.txt && $(<"$dir/inventory-status.txt") != ok ]]; then
+    printf '%s\n' "--- inventory status for ${label}: $(<"$dir/inventory-status.txt") ---"
+  elif [[ -s $dir/inventory-errors.txt ]]; then
+    printf '%s\n' "--- inventory warnings for ${label}; see $dir/inventory-errors.txt ---"
   fi
 
   for report_dir in \

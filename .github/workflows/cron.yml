@@ -65,19 +65,28 @@ jobs:
           capture_best_effort "${snapshot_dir}/lsblk.txt" lsblk -a -b -o NAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS
           capture_best_effort "${snapshot_dir}/diskstats.txt" cat /proc/diskstats
 
-          data_file="$(mktemp "${RUNNER_TEMP:-/tmp}/gitoxide-disk-diagnostics-top-level-du.XXXXXX")"
-          {
-            for path in /usr /opt /var /home /mnt "${RUNNER_TOOL_CACHE:-}" "${RUNNER_TEMP:-}" "${HOME:-}" "${GITHUB_WORKSPACE:-}"; do
-              [[ -n "${path}" ]] || continue
-              [[ -e "${path}" || -L "${path}" ]] || continue
-              sudo du -x -B1 --max-depth=1 -- "${path}" 2>/dev/null || true
-            done
-          } >"${data_file}"
+          data_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/gitoxide-disk-diagnostics-top-level-du.XXXXXX")"
+          du_job_count=0
+          for path in /usr /opt /var /home /mnt "${RUNNER_TOOL_CACHE:-}" "${RUNNER_TEMP:-}" "${HOME:-}" "${GITHUB_WORKSPACE:-}"; do
+            [[ -n "${path}" ]] || continue
+            [[ -e "${path}" || -L "${path}" ]] || continue
+            du_job_count=$((du_job_count + 1))
+            job_output="${data_dir}/$(printf '%04d' "${du_job_count}")"
+            (
+              sudo du -x -B1 --max-depth=1 -- "${path}" >"${job_output}" 2>/dev/null || true
+            ) &
+          done
+          wait
+          shopt -s nullglob
+          du_outputs=("${data_dir}"/*)
+          shopt -u nullglob
           {
             printf 'bytes\tpath\n'
-            LC_ALL=C sort -nr "${data_file}"
+            if [[ ${#du_outputs[@]} -gt 0 ]]; then
+              LC_ALL=C sort -nr "${du_outputs[@]}"
+            fi
           } >"${snapshot_dir}/top-level-du.tsv"
-          rm -f "${data_file}"
+          rm -rf "${data_dir}"
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false

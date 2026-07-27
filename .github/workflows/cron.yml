@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: '0 13,1 * * *'
   workflow_dispatch:
+  # TEMPORARY FOR THIS DIAGNOSTIC PR ONLY: this pull_request trigger MUST be
+  # removed before this workflow change is integrated anywhere, because the
+  # stress job is far too resource-intensive for ordinary pull requests.
+  pull_request:
 
 permissions:
   contents: read
@@ -11,13 +15,102 @@ permissions:
 jobs:
   stress:
     runs-on: ubuntu-latest
+    env:
+      GITOXIDE_DIAGNOSTICS_DIR: ${{ runner.temp }}/gitoxide-disk-diagnostics
+      GITOXIDE_DIAGNOSTICS_INTERVAL_SECONDS: 45
 
     steps:
+      - name: Pre-checkout disk baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          diagnostics_dir="${GITOXIDE_DIAGNOSTICS_DIR}"
+          snapshot_dir="${diagnostics_dir}/snapshots/pre-checkout"
+          mkdir -p "${snapshot_dir}"
+
+          capture_best_effort() {
+            local output="${1:?need output path}"
+            shift
+
+            set +e
+            "$@" >"${output}" 2>&1
+            local status=$?
+            set -e
+            if [[ ${status} -eq 0 ]]; then
+              return 0
+            fi
+
+            {
+              printf '\n[gitoxide-disk-diagnostics] command failed with exit code %s\n' "${status}"
+              printf '[gitoxide-disk-diagnostics] command:'
+              printf ' %q' "$@"
+              printf '\n'
+            } >>"${output}"
+            return 0
+          }
+
+          {
+            printf 'timestamp=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            env | LC_ALL=C sort | grep -E '^(HOME|Image(OS|Version)|RUNNER_|ACTIONS_RUNNER_|CI=|GITHUB_(ACTOR|ACTION|ACTION_PATH|ACTION_REPOSITORY|ACTION_REF|ACTIONS|JOB|REF|REPOSITORY|RUN_ATTEMPT|RUN_ID|RUN_NUMBER|SHA|WORKFLOW|WORKSPACE)=)' || true
+          } >"${snapshot_dir}/env.txt"
+
+          capture_best_effort "${snapshot_dir}/uname.txt" uname -a
+          capture_best_effort "${snapshot_dir}/os-release.txt" cat /etc/os-release
+          capture_best_effort "${snapshot_dir}/df-human.txt" df -h
+          capture_best_effort "${snapshot_dir}/df-inodes.txt" df -i
+          capture_best_effort "${snapshot_dir}/df-bytes.txt" df -B1
+          capture_best_effort "${snapshot_dir}/mount.txt" mount
+          capture_best_effort "${snapshot_dir}/findmnt.txt" findmnt -A -o TARGET,SOURCE,FSTYPE,OPTIONS,SIZE,USED,AVAIL,USE%,INODES,IUSED,IUSE%
+          capture_best_effort "${snapshot_dir}/lsblk.txt" lsblk -a -b -o NAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS
+          capture_best_effort "${snapshot_dir}/diskstats.txt" cat /proc/diskstats
+
+          data_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/gitoxide-disk-diagnostics-top-level-du.XXXXXX")"
+          du_job_count=0
+          for path in /usr /opt /var /home /mnt "${RUNNER_TOOL_CACHE:-}" "${RUNNER_TEMP:-}" "${HOME:-}" "${GITHUB_WORKSPACE:-}"; do
+            [[ -n "${path}" ]] || continue
+            [[ -e "${path}" || -L "${path}" ]] || continue
+            du_job_count=$((du_job_count + 1))
+            job_output="${data_dir}/$(printf '%04d' "${du_job_count}")"
+            (
+              sudo du -x -B1 --max-depth=1 -- "${path}" >"${job_output}" 2>/dev/null || true
+            ) &
+          done
+          wait
+          shopt -s nullglob
+          du_outputs=("${data_dir}"/*)
+          shopt -u nullglob
+          {
+            printf 'bytes\tpath\n'
+            if [[ ${#du_outputs[@]} -gt 0 ]]; then
+              LC_ALL=C sort -nr "${du_outputs[@]}"
+            fi
+          } >"${snapshot_dir}/top-level-du.tsv"
+          rm -rf "${data_dir}"
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - name: Post-checkout disk snapshot
+        shell: bash
+        run: ./ci/diagnose-disk-usage.sh snapshot post-checkout --inventory
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: stress
-        run: make stress
+      - name: Post-cache disk snapshot
+        shell: bash
+        run: ./ci/diagnose-disk-usage.sh snapshot post-cache --inventory
+      - name: stress with disk diagnostics
+        shell: bash
+        run: ./ci/diagnose-disk-usage.sh monitor make stress
+      - name: Finalize disk diagnostics
+        if: ${{ always() }}
+        shell: bash
+        run: ./ci/diagnose-disk-usage.sh finalize || true
+      - name: Upload disk diagnostics artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stress-disk-diagnostics-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ env.GITOXIDE_DIAGNOSTICS_DIR }}
+          if-no-files-found: warn
+          retention-days: 7

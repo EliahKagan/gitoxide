@@ -134,18 +134,18 @@ jobs:
           - target: s390x-unknown-linux-gnu
             os: ubuntu-latest
           - target: x86_64-apple-darwin
-            os: macos-15-intel
+            os: macos-26-intel
           - target: aarch64-apple-darwin
-            os: macos-latest
+            os: macos-26
           - target: x86_64-pc-windows-msvc
-            os: windows-latest
+            os: windows-2025-vs2026
           - target: x86_64-pc-windows-gnu
-            os: windows-latest
+            os: windows-2025-vs2026
             rust: stable-x86_64-gnu
           - target: i686-pc-windows-msvc
-            os: windows-latest
+            os: windows-2025-vs2026
           - target: aarch64-pc-windows-msvc
-            os: windows-latest
+            os: windows-2025-vs2026
         # On linux we build with musl which causes trouble with open-ssl. For now, just build max-pure there.
         # It's a TODO. See https://github.com/GitoxideLabs/gitoxide/issues/1242.
         exclude:
@@ -280,7 +280,7 @@ jobs:
           cp -- {README.md,LICENSE-*,CHANGELOG.md} "$ARCHIVE/"
 
       - name: Build archive (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2025-vs2026'
         run: |
           file -- "$TARGET_DIR/$PROFILE"/{ein,gix}.exe
           cp -- "$TARGET_DIR/$PROFILE"/{ein,gix}.exe "$ARCHIVE/"
@@ -290,7 +290,7 @@ jobs:
           echo "ASSET_SUM=$ARCHIVE.zip.sha256" >> "$GITHUB_ENV"
 
       - name: Build archive (Unix)
-        if: matrix.os != 'windows-latest'
+        if: matrix.os != 'windows-2025-vs2026'
         run: |
           file -- "$TARGET_DIR/$PROFILE"/{ein,gix}
           cp -- "$TARGET_DIR/$PROFILE"/{ein,gix} "$ARCHIVE/"
@@ -306,7 +306,7 @@ jobs:
 
   # Add a macOS universal binary archive for a feature using its built aarch64 and x86_64 assets.
   build-macos-universal2-release:
-    runs-on: macos-latest
+    runs-on: macos-26
 
     needs: [ create-release, build-release ]
 
@@ -523,19 +523,19 @@ jobs:
         build: [ win-msvc, win-gnu, win32-msvc, win32-gnu ]
         include:
           - build: win-msvc
-            os: windows-latest
+            os: windows-2025-vs2026
             rust: stable
             target: x86_64-pc-windows-msvc
           - build: win-gnu
-            os: windows-latest
+            os: windows-2025-vs2026
             rust: stable-x86_64-gnu
             target: x86_64-pc-windows-gnu
           - build: win32-msvc
-            os: windows-latest
+            os: windows-2025-vs2026
             rust: stable
             target: i686-pc-windows-msvc
           - build: win32-gnu
-            os: windows-latest
+            os: windows-2025-vs2026
             rust: stable
             target: i686-pc-windows-gnu
 

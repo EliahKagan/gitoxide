@@ -9,8 +9,8 @@
 //! differing license or authorship would slip through untested until
 //! someone noticed it missing from `gix licenses`. This test closes that
 //! gap by independently recomputing "should this crate be in the
-//! manifest?" for every reachable workspace member and cross-checking
-//! the verdict against the binary's actual manifest.
+//! manifest?" for every linked workspace member and cross-checking the
+//! verdict against the binary's actual manifest.
 //!
 //! # Why not call `needs_separate_attribution` from production?
 //!
@@ -30,193 +30,30 @@
 //! Author-set differences alone are an unambiguous signal (set equality
 //! is independent of license logic), so we assert them strictly.
 
-use std::collections::{BTreeSet, VecDeque};
+mod support;
+
+use std::collections::BTreeSet;
 use std::process::Command;
 
-/// Resolve `cargo` the same way `build.rs` does: prefer the `CARGO` env
-/// var Cargo exports, fall back to `cargo` on `PATH` only if unset.
-fn cargo_bin() -> std::ffi::OsString {
-    std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into())
-}
+use support::{cargo_tree_crates, enabled_feature_profiles, gix_manifest, target_triple};
 
-fn run_cargo_metadata() -> serde_json::Value {
-    let mut cmd = Command::new(cargo_bin());
-    cmd.args(["metadata", "--format-version", "1", "--no-default-features"]);
-    cmd.current_dir(env!("CARGO_MANIFEST_DIR"));
-    let output = cmd.output().expect("run `cargo metadata`");
+/// Every package of the workspace, as `cargo metadata` describes it; only
+/// license and authorship are read from it, never its resolve graph.
+fn workspace_packages() -> Vec<serde_json::Value> {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = Command::new(cargo)
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("run `cargo metadata`");
     assert!(
         output.status.success(),
         "`cargo metadata` failed ({}):\nstderr: {}",
         output.status,
         String::from_utf8_lossy(&output.stderr),
     );
-    serde_json::from_slice(&output.stdout).expect("parse cargo-metadata JSON")
-}
-
-/// BFS from `gitoxide` through `resolve.nodes`, following every dep edge
-/// that is (a) non-dev and (b) actually activated under the current
-/// feature resolution. Independent of `build.rs`'s Rust implementation —
-/// operates on raw JSON so a shared-struct layout bug cannot corrupt
-/// both sides simultaneously.
-///
-/// See `optional_dep_activated_by_features` below for the activator-
-/// string semantics (`"dep:foo"`, `"foo"`, `"foo/bar"`, `"foo?/bar"`).
-fn reachable_from_gitoxide(md: &serde_json::Value) -> BTreeSet<String> {
-    use std::collections::HashMap;
-
-    let resolve = md.get("resolve").and_then(|r| r.get("nodes")).expect("resolve.nodes");
-    let root_id = md["packages"]
-        .as_array()
-        .expect("packages array")
-        .iter()
-        .find(|p| p["name"].as_str() == Some("gitoxide"))
-        .and_then(|p| p["id"].as_str())
-        .expect("gitoxide package in metadata")
-        .to_string();
-
-    let packages_by_id: HashMap<&str, &serde_json::Value> = md["packages"]
-        .as_array()
-        .expect("packages array")
-        .iter()
-        .filter_map(|p| p["id"].as_str().map(|id| (id, p)))
-        .collect();
-    let features_by_id: HashMap<&str, BTreeSet<&str>> = resolve
-        .as_array()
-        .expect("resolve.nodes array")
-        .iter()
-        .filter_map(|n| {
-            let id = n["id"].as_str()?;
-            let features: BTreeSet<&str> = n["features"]
-                .as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                .unwrap_or_default();
-            Some((id, features))
-        })
-        .collect();
-
-    let mut deps: HashMap<String, Vec<String>> = HashMap::new();
-    for node in resolve.as_array().expect("resolve.nodes is array") {
-        let owner_id = node["id"].as_str().unwrap_or("");
-        let owner_pkg = packages_by_id.get(owner_id).copied();
-        let owner_features = features_by_id.get(owner_id);
-        let mut ds = Vec::new();
-        for dep in node["deps"].as_array().unwrap_or(&Vec::new()) {
-            let Some(pkg) = dep["pkg"].as_str() else { continue };
-            let kinds = dep["dep_kinds"].as_array();
-            let has_non_dev_edge = match kinds {
-                None => true,
-                Some(arr) if arr.is_empty() => true,
-                Some(arr) => arr.iter().any(|dk| dk["kind"].as_str() != Some("dev")),
-            };
-            if !has_non_dev_edge {
-                continue;
-            }
-            let dep_alias = dep["name"].as_str().unwrap_or("");
-            let raw_dep_name = packages_by_id.get(pkg).and_then(|p| p["name"].as_str()).unwrap_or("");
-            let is_optional = owner_pkg
-                .and_then(|p| p["dependencies"].as_array())
-                .is_some_and(|deps| {
-                    deps.iter().any(|md_dep| {
-                        let opt = md_dep["optional"].as_bool().unwrap_or(false);
-                        let name = md_dep["name"].as_str().unwrap_or("");
-                        let rename = md_dep["rename"].as_str();
-                        opt && name == raw_dep_name && (rename.is_none() || rename == Some(dep_alias))
-                    })
-                });
-            if is_optional && !optional_dep_activated_by_features(owner_pkg, owner_features, dep_alias, raw_dep_name) {
-                continue;
-            }
-            ds.push(pkg.to_string());
-        }
-        deps.insert(owner_id.to_string(), ds);
-    }
-
-    let mut reachable: BTreeSet<String> = BTreeSet::new();
-    let mut queue: VecDeque<String> = VecDeque::new();
-    queue.push_back(root_id);
-    while let Some(id) = queue.pop_front() {
-        if !reachable.insert(id.clone()) {
-            continue;
-        }
-        if let Some(ds) = deps.get(&id) {
-            for d in ds {
-                queue.push_back(d.clone());
-            }
-        }
-    }
-    reachable
-}
-
-fn optional_dep_activated_by_features(
-    owner_pkg: Option<&serde_json::Value>,
-    owner_features: Option<&BTreeSet<&str>>,
-    alias_name: &str,
-    raw_dep_name: &str,
-) -> bool {
-    let Some(owner_pkg) = owner_pkg else { return false };
-    let Some(owner_features) = owner_features else {
-        return false;
-    };
-    if owner_features.contains(alias_name) {
-        return true;
-    }
-    let Some(feat_map) = owner_pkg["features"].as_object() else {
-        return false;
-    };
-    for f in owner_features {
-        let Some(arr) = feat_map.get(*f).and_then(|v| v.as_array()) else {
-            continue;
-        };
-        for a in arr {
-            let Some(s) = a.as_str() else { continue };
-            if activator_enables(s, alias_name, raw_dep_name) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn activator_enables(activator: &str, alias_name: &str, raw_dep_name: &str) -> bool {
-    let matches = |n: &str| n == alias_name || n == raw_dep_name;
-    if let Some(rest) = activator.strip_prefix("dep:") {
-        return matches(rest);
-    }
-    if activator.contains("?/") {
-        return false;
-    }
-    if let Some((name, _)) = activator.split_once('/') {
-        return matches(name);
-    }
-    matches(activator)
-}
-
-/// Parse the built `gix` binary's manifest and return both name sets:
-/// full-attribution entries and the names-only same-attribution list.
-fn binary_manifest() -> (BTreeSet<String>, BTreeSet<String>) {
-    let gix = env!("CARGO_BIN_EXE_gix");
-    let output = Command::new(gix)
-        .args(["licenses", "--format", "json"])
-        .output()
-        .expect("run `gix licenses --format json`");
-    assert!(
-        output.status.success(),
-        "`gix licenses --format json` failed ({}):\nstderr: {}",
-        output.status,
-        String::from_utf8_lossy(&output.stderr),
-    );
-    let data: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse `gix licenses` JSON");
-    let full: BTreeSet<String> = data["crates"]
-        .as_array()
-        .expect("`crates` is an array")
-        .iter()
-        .filter_map(|c| c["name"].as_str().map(String::from))
-        .collect();
-    let same_attrib: BTreeSet<String> = data["workspace_members_same_attribution"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_default();
-    (full, same_attrib)
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).expect("parse cargo-metadata JSON");
+    metadata["packages"].as_array().expect("packages array").to_vec()
 }
 
 /// Whitespace-tokenised, sorted form of an SPDX license expression.
@@ -245,18 +82,14 @@ fn license_of(p: &serde_json::Value) -> Option<String> {
 
 #[test]
 fn every_workspace_member_with_different_attribution_is_in_manifest() {
-    let md = run_cargo_metadata();
-    let ws_ids: BTreeSet<String> = md["workspace_members"]
-        .as_array()
-        .expect("workspace_members array")
-        .iter()
-        .filter_map(|v| v.as_str().map(String::from))
+    let manifest = gix_manifest();
+    let linked: BTreeSet<String> = cargo_tree_crates(&enabled_feature_profiles(), target_triple(&manifest))
+        .into_iter()
+        .map(|(name, _)| name)
         .collect();
-    let reachable = reachable_from_gitoxide(&md);
+    let packages = workspace_packages();
 
-    let root = md["packages"]
-        .as_array()
-        .expect("packages array")
+    let root = packages
         .iter()
         .find(|p| p["name"].as_str() == Some("gitoxide"))
         .expect("gitoxide package present");
@@ -264,27 +97,35 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
     let root_license_tokens = root_license.as_deref().map(sorted_license_tokens);
     let root_authors = authors_of(root);
 
-    let (full, same_attrib) = binary_manifest();
+    let full: BTreeSet<&str> = manifest["crates"]
+        .as_array()
+        .expect("`crates` is an array")
+        .iter()
+        .filter_map(|c| c["name"].as_str())
+        .collect();
+    let same_attrib: BTreeSet<&str> = manifest["workspace_members_same_attribution"]
+        .as_array()
+        .expect("`workspace_members_same_attribution` is an array")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
 
     let mut missing_despite_author_diff: Vec<String> = Vec::new();
     let mut full_entry_despite_exact_match: Vec<String> = Vec::new();
     let mut in_both_lists: Vec<String> = Vec::new();
     let mut in_neither_list: Vec<String> = Vec::new();
     let mut license_raw_differs_only: Vec<String> = Vec::new();
+    let mut checked = 0;
 
-    for p in md["packages"].as_array().expect("packages array") {
-        let id = p["id"].as_str().unwrap_or("").to_string();
-        if !ws_ids.contains(&id) {
-            continue;
-        }
-        if !reachable.contains(&id) {
-            continue;
-        }
+    for p in &packages {
         let name = p["name"].as_str().unwrap_or("").to_string();
-        // The root itself never needs its own entry in its own manifest.
-        if name == "gitoxide" {
+        // The root itself never needs its own entry in its own manifest,
+        // and members cargo does not link (test crates, tools) have no
+        // place in it either.
+        if name == "gitoxide" || !linked.contains(&name) {
             continue;
         }
+        checked += 1;
 
         let pkg_license = license_of(p);
         let pkg_license_tokens = pkg_license.as_deref().map(sorted_license_tokens);
@@ -294,11 +135,11 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
         let license_tokens_differ = pkg_license_tokens != root_license_tokens;
         let license_raw_differs = pkg_license != root_license;
 
-        let in_full = full.contains(&name);
-        let in_same_attrib = same_attrib.contains(&name);
+        let in_full = full.contains(name.as_str());
+        let in_same_attrib = same_attrib.contains(name.as_str());
 
-        // Hard rule 1: every reachable workspace member must be
-        // represented in exactly one of the two manifest buckets.
+        // Hard rule 1: every linked workspace member must be represented
+        // in exactly one of the two manifest buckets.
         match (in_full, in_same_attrib) {
             (true, true) => in_both_lists.push(name.clone()),
             (false, false) => in_neither_list.push(name.clone()),
@@ -333,6 +174,10 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
             license_raw_differs_only.push(format!("{name} (license {pkg_license:?} vs root {root_license:?})"));
         }
     }
+    assert!(
+        checked > 0,
+        "no linked workspace member was checked; the cargo tree oracle or the workspace listing is broken",
+    );
 
     if !license_raw_differs_only.is_empty() {
         eprintln!(
@@ -355,17 +200,4 @@ fn every_workspace_member_with_different_attribution_is_in_manifest() {
          workspace members in BOTH lists (should be in exactly one): {in_both_lists:?}\n  \
          workspace members in NEITHER list (must be in one): {in_neither_list:?}",
     );
-}
-
-/// Belt-and-suspenders: the structural check above is the load-bearing
-/// assertion. A named-sentinel version stays in `embedded.rs` so the
-/// test binary also catches regressions when the structural test is
-/// inadvertently vacuous (e.g. if `reachable_from_gitoxide` ever returns
-/// an empty set). Nothing to do here.
-#[test]
-fn sentinels_match_structural_verdict() {
-    // This test exists as a pointer — the actual sentinel assertions
-    // live in `src/licenses/embedded.rs` as
-    // `workspace_members_with_different_attribution_are_included`, where
-    // they run under `cargo test --lib` in CI.
 }

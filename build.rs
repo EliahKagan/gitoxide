@@ -12,7 +12,7 @@
 //!     text so the `release.yml` workflow can copy it straight into the
 //!     archive as `THIRD-PARTY-LICENSES.txt`.
 //!
-//! The license logic degrades gracefully: if `cargo metadata` cannot be run
+//! The license logic degrades gracefully: if `cargo` cannot answer
 //! (e.g. because the registry cache is unavailable), a minimal stub manifest
 //! is emitted so `cargo build` still succeeds for end users. Under CI (`CI=1`)
 //! we fail hard instead — regressions must be caught, not silently swallowed.
@@ -49,7 +49,7 @@ mod spdx_texts;
 #[path = "src/licenses/build_support.rs"]
 mod build_support;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -130,40 +130,30 @@ fn out_dir() -> Result<PathBuf, String> {
 }
 
 fn collect_manifest() -> Result<Manifest, String> {
+    let features = enabled_top_level_features();
+    let target = std::env::var("TARGET").map_err(|_| "TARGET env var is not set".to_string())?;
+    let linked = linked_packages(&features, &target)?;
+
+    // `cargo metadata` supplies what `cargo tree` does not print: each
+    // package's license, authors, links and, above all, the path to its
+    // source tree, where the license files are. Its resolve graph is not
+    // consulted — it unifies features across the whole workspace and so
+    // over-approximates what this package links.
     let mut cmd = cargo_metadata::MetadataCommand::new();
     cmd.features(cargo_metadata::CargoOpt::NoDefaultFeatures);
-    let enabled_features = enabled_top_level_features();
-    if !enabled_features.is_empty() {
-        cmd.features(cargo_metadata::CargoOpt::SomeFeatures(enabled_features));
+    if !features.is_empty() {
+        cmd.features(cargo_metadata::CargoOpt::SomeFeatures(features));
     }
-    // Scope the graph to the actual build target so
-    // `[target.'cfg(...)'.dependencies]` tables are honoured.
-    let mut extra: Vec<String> = Vec::new();
-    if let Some(target) = std::env::var_os("TARGET") {
-        extra.push("--filter-platform".into());
-        extra.push(target.to_string_lossy().into_owned());
-    }
-    if !extra.is_empty() {
-        cmd.other_options(extra);
-    }
-
     let metadata = cmd.exec().map_err(|e| format!("cargo metadata failed: {e}"))?;
 
     let workspace_members: HashSet<_> = metadata.workspace_members.iter().cloned().collect();
-
-    // Determine which packages are reachable from the `gitoxide` binary's
-    // dependency graph (as opposed to other workspace members' graphs).
-    // This matters because some workspace members (e.g. test crates) are
-    // never linked into gix/ein and shouldn't appear in the manifest.
-    let reachable = reachable_from_root(&metadata, "gitoxide")?;
-
     let root_pkg = metadata
         .packages
         .iter()
         .find(|p| p.name == "gitoxide")
         .ok_or("gitoxide package not found in metadata")?;
 
-    // Partition reachable packages into three buckets:
+    // Partition the linked packages into three buckets:
     //
     //   - full-attribution entries: third-party (non-workspace, sourced)
     //     deps, and workspace members whose license or authorship differs
@@ -173,24 +163,22 @@ fn collect_manifest() -> Result<Manifest, String> {
     //     matches the root's exactly. Listed by name only so readers can
     //     see the whole workspace footprint without re-reading the root's
     //     own LICENSE-MIT / LICENSE-APACHE for each one.
-    //   - root itself and anything not reachable: excluded entirely.
+    //   - the root itself: excluded entirely.
     //
-    // The reachability gate ensures dev-only transitive crates (e.g.
-    // `gix-testtools`, which is in `[dev-dependencies]` of most `gix-*`
-    // crates but never linked into the binary) never appear.
     // Each entry records both the package and whether it is a workspace
-    // member (`true`) or a third-party crate (`false`). This is the
-    // workspace-membership signal that propagates to `CrateLicense::is_workspace_member`
-    // in the rendered manifest, so that downstream consumers can group
-    // attribution into "third-party" vs "workspace member with separate
-    // attribution" without having to consult cargo metadata at runtime.
+    // member (`true`) or a third-party crate (`false`); that is what
+    // `CrateLicense::is_workspace_member` carries into the rendered
+    // manifest, so consumers can group attribution without consulting
+    // cargo at runtime.
     let mut to_attribute: Vec<(&cargo_metadata::Package, bool)> = Vec::new();
     let mut same_attribution_ws: Vec<String> = Vec::new();
 
-    for p in &metadata.packages {
-        if !reachable.contains(&p.id) {
-            continue;
-        }
+    for (name, version) in &linked {
+        let p = metadata
+            .packages
+            .iter()
+            .find(|p| p.name == name.as_str() && p.version.to_string() == *version)
+            .ok_or_else(|| format!("`cargo tree` lists `{name} {version}`, which `cargo metadata` does not know"))?;
         if p.id == root_pkg.id {
             continue;
         }
@@ -211,7 +199,6 @@ fn collect_manifest() -> Result<Manifest, String> {
     }
     to_attribute.sort_by(|(a, _), (b, _)| a.name.cmp(&b.name).then_with(|| a.version.cmp(&b.version)));
     same_attribution_ws.sort();
-    same_attribution_ws.dedup();
 
     let crates: Vec<CrateLicense> = to_attribute
         .into_iter()
@@ -223,8 +210,47 @@ fn collect_manifest() -> Result<Manifest, String> {
         workspace_members_same_attribution: same_attribution_ws,
         generated_at: now_stamp(),
         feature_profile: detect_feature_profile(),
-        target_triple: std::env::var("TARGET").unwrap_or_default(),
+        target_triple: target,
     })
+}
+
+/// The packages linked into this build of `gitoxide`, as name/version pairs,
+/// according to `cargo tree`.
+///
+/// `cargo tree -p gitoxide` resolves features for this package alone, the
+/// way `cargo build -p gitoxide` does. The other stable view of the graph,
+/// `cargo metadata` (and the libraries built on it), reports the
+/// workspace-wide resolve, in which a feature enabled by any workspace
+/// member counts for all, and so over-approximates what is linked.
+/// `normal` and `build` edges are followed; `dev` edges are not.
+fn linked_packages(features: &[String], target: &str) -> Result<BTreeSet<(String, String)>, String> {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut cmd = Command::new(cargo);
+    cmd.args(["tree", "--package", "gitoxide", "--edges", "normal,build"])
+        .args(["--prefix", "none", "--format", "{p}"])
+        .args(["--no-default-features", "--target", target])
+        .current_dir(env!("CARGO_MANIFEST_DIR"));
+    if !features.is_empty() {
+        cmd.arg("--features").arg(features.join(","));
+    }
+    let output = cmd.output().map_err(|e| format!("running `cargo tree` failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "`cargo tree` failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let stdout = String::from_utf8(output.stdout).map_err(|e| format!("`cargo tree` output is not UTF-8: {e}"))?;
+    stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            build_support::parse_cargo_tree_line(line)
+                .map(|(name, version)| (name.to_owned(), version.to_owned()))
+                .ok_or_else(|| format!("unexpected `cargo tree` output line: {line:?}"))
+        })
+        .collect()
 }
 
 /// Build a [`CrateLicense`] entry for one third-party dependency, discovering
@@ -260,125 +286,6 @@ fn build_crate_entry(p: &cargo_metadata::Package, is_workspace_member: bool) -> 
         used_spdx_fallback,
         is_workspace_member,
     }
-}
-
-/// BFS from the named root package through the resolve graph, returning
-/// every package ID reachable from it via non-dev dep edges that are
-/// actually active under the resolved feature set.
-///
-/// This is more restrictive than walking `resolve.nodes[].deps` verbatim:
-/// `cargo metadata` lists *every* dep (optional or not) in that array,
-/// so a naive BFS pulls in optional deps that the chosen feature set
-/// never activates. Optional deps shipping code that isn't linked into
-/// the final binary would then end up attributed incorrectly.
-///
-/// For each edge `owner -> dep`, the filter here asks:
-///
-///   * Is it a non-dev edge?  (`dev_kinds` excludes `Development`-only
-///     edges; `gix-testtools` and other `[dev-dependencies]` transits
-///     are dropped.)
-///   * Is the dep non-optional in `owner`'s manifest, or is one of
-///     `owner`'s resolved features an activator for the optional dep?
-///
-/// Only edges passing both gates are followed. Feature activation is
-/// judged against `resolve.nodes[owner].features` and `owner`'s own
-/// `features` table, mirroring cargo's own edition-2021 semantics for
-/// `dep:foo`, bare `foo`, `foo/bar`, and weak `foo?/bar` activators.
-fn reachable_from_root(
-    metadata: &cargo_metadata::Metadata,
-    root_name: &str,
-) -> Result<HashSet<cargo_metadata::PackageId>, String> {
-    let resolve = metadata
-        .resolve
-        .as_ref()
-        .ok_or("cargo metadata produced no resolve graph")?;
-
-    let root_id = metadata
-        .packages
-        .iter()
-        .find(|p| p.name == root_name)
-        .map(|p| &p.id)
-        .ok_or_else(|| format!("package `{root_name}` not found in metadata"))?;
-
-    let pkg_by_id: HashMap<&cargo_metadata::PackageId, &cargo_metadata::Package> =
-        metadata.packages.iter().map(|p| (&p.id, p)).collect();
-    let features_of: HashMap<&cargo_metadata::PackageId, &[String]> =
-        resolve.nodes.iter().map(|n| (&n.id, n.features.as_slice())).collect();
-
-    let mut deps_of: HashMap<&cargo_metadata::PackageId, Vec<&cargo_metadata::PackageId>> = HashMap::new();
-    for node in &resolve.nodes {
-        let Some(owner_pkg) = pkg_by_id.get(&node.id) else {
-            continue;
-        };
-        let owner_enabled: &[String] = features_of.get(&node.id).copied().unwrap_or(&[]);
-        let mut linked: Vec<&cargo_metadata::PackageId> = Vec::new();
-        for node_dep in &node.deps {
-            // Skip dev-only edges.
-            if !node_dep.dep_kinds.is_empty()
-                && node_dep
-                    .dep_kinds
-                    .iter()
-                    .all(|dk| matches!(dk.kind, cargo_metadata::DependencyKind::Development))
-            {
-                continue;
-            }
-            // Locate the owner's manifest entry for this dep to determine
-            // whether it's optional. Match by `Dependency::rename` first
-            // (the `package = "..."` case, e.g. `gix-transport-configuration-only`
-            // which references `gix-transport`), then by raw `name`.
-            let dep_pkg = pkg_by_id.get(&node_dep.pkg);
-            let raw_dep_name = dep_pkg.map_or("", |p| p.name.as_ref());
-            let mut manifest_entry = owner_pkg
-                .dependencies
-                .iter()
-                .find(|md| md.rename.as_deref() == Some(node_dep.name.as_ref()) && md.name == raw_dep_name);
-            if manifest_entry.is_none() {
-                manifest_entry = owner_pkg
-                    .dependencies
-                    .iter()
-                    .find(|md| md.rename.is_none() && md.name == raw_dep_name);
-            }
-            let is_optional = manifest_entry.is_some_and(|md| md.optional);
-            if is_optional && !optional_dep_activated(owner_pkg, owner_enabled, &node_dep.name, raw_dep_name) {
-                continue;
-            }
-            linked.push(&node_dep.pkg);
-        }
-        deps_of.insert(&node.id, linked);
-    }
-
-    let mut reachable = HashSet::new();
-    let mut queue = VecDeque::new();
-    queue.push_back(root_id.clone());
-    while let Some(id) = queue.pop_front() {
-        if !reachable.insert(id.clone()) {
-            continue;
-        }
-        if let Some(deps) = deps_of.get(&id) {
-            for dep_id in deps {
-                queue.push_back((*dep_id).clone());
-            }
-        }
-    }
-    Ok(reachable)
-}
-
-/// Return `true` if any of `owner`'s enabled features activates the
-/// optional dep whose alias in the manifest is `alias_name` (the
-/// `rename` or raw `name` seen in `owner.dependencies`) and whose
-/// package name is `raw_dep_name`.
-///
-/// Thin adapter that forwards `owner.features` (a
-/// `BTreeMap<String, Vec<String>>` in `cargo_metadata`'s `Package`
-/// struct) into [`build_support::any_activator_enables_dep`], which is
-/// unit-tested against the cargo activator grammar on the library side.
-fn optional_dep_activated(
-    owner: &cargo_metadata::Package,
-    owner_enabled: &[String],
-    alias_name: &str,
-    raw_dep_name: &str,
-) -> bool {
-    build_support::any_activator_enables_dep(&owner.features, owner_enabled, alias_name, raw_dep_name)
 }
 
 fn enabled_top_level_features() -> Vec<String> {

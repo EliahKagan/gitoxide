@@ -33,15 +33,18 @@ fn every_build_script_path_module_is_packaged() {
         output.status,
         String::from_utf8_lossy(&output.stderr),
     );
-    let packaged: BTreeSet<&str> = std::str::from_utf8(&output.stdout)
+    // Cargo prints the archive paths with the host's separator; the `#[path]`
+    // strings use `/`.
+    let packaged: BTreeSet<String> = std::str::from_utf8(&output.stdout)
         .expect("file list is UTF-8")
         .lines()
+        .map(|line| line.replace('\\', "/"))
         .collect();
 
     let missing: Vec<&str> = path_modules
         .iter()
         .copied()
-        .filter(|module| !packaged.contains(module))
+        .filter(|module| !packaged.contains(*module))
         .collect();
     assert!(
         missing.is_empty(),

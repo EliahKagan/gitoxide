@@ -5,9 +5,9 @@
 
 use std::io::Write;
 
+use crate::licenses::render;
 use anyhow::{Context, Result};
 use gitoxide_core::OutputFormat;
-use gitoxide_core::licenses::render;
 
 use super::embedded;
 
@@ -140,11 +140,7 @@ fn emit_single_crate_json(out: &mut dyn Write, name: &str) -> Result<()> {
 /// embedded blob, so unit tests can pass hand-crafted fixtures (notably
 /// the multi-version case, which the real embedded manifest typically
 /// does not exhibit).
-fn emit_single_crate_json_against(
-    out: &mut dyn Write,
-    manifest: &gitoxide_core::licenses::Manifest,
-    name: &str,
-) -> Result<()> {
+fn emit_single_crate_json_against(out: &mut dyn Write, manifest: &crate::licenses::Manifest, name: &str) -> Result<()> {
     let hits = manifest.find_all(name);
     if !hits.is_empty() {
         // Always emit a JSON array, regardless of whether one or many
@@ -193,8 +189,8 @@ fn emit_single_crate_json_against(
 /// programmatically should cross-reference
 /// [`Manifest::workspace_members_same_attribution`], where every same-
 /// attribution member appears by name.
-fn synthesized_root_entry(name: &str) -> gitoxide_core::licenses::CrateLicense {
-    use gitoxide_core::licenses::{CrateLicense, LicenseFile, spdx_texts};
+fn synthesized_root_entry(name: &str) -> crate::licenses::CrateLicense {
+    use crate::licenses::{CrateLicense, LicenseFile, spdx_texts};
     CrateLicense {
         name: name.to_string(),
         version: String::new(),
@@ -220,7 +216,7 @@ fn synthesized_root_entry(name: &str) -> gitoxide_core::licenses::CrateLicense {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gitoxide_core::licenses::{CrateLicense, Manifest};
+    use crate::licenses::{CrateLicense, Manifest};
 
     fn crate_entry(name: &str, version: &str, spdx: &str) -> CrateLicense {
         CrateLicense {

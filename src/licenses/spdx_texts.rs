@@ -5,25 +5,27 @@
 //! anything else is treated as "missing text" so that CI can catch it and we
 //! can extend this table deliberately, never silently.
 //!
-//! The texts for `MIT` and `Apache-2.0` are reused from the repository's own
-//! top-level `LICENSE-MIT` / `LICENSE-APACHE` files to guarantee that a single
-//! canonical copy is maintained. Other identifiers return `None`; the
+//! The texts for `MIT` and `Apache-2.0` are reused from this package's own
+//! top-level `LICENSE-MIT` / `LICENSE-APACHE` files, located through
+//! `CARGO_MANIFEST_DIR` so that the build script and the library find them
+//! alike, to guarantee that a single canonical copy is maintained. Other
+//! identifiers return `None`; the
 //! `every_crate_has_at_least_one_license_file` test fails loudly if a real
 //! crate lands on this path with no LICENSE file in its source tree, so the
 //! table can be extended deliberately rather than silently.
 
-/// Canonical text of the MIT License, reused from the repository root.
+/// Canonical text of the MIT License, reused from this package's `LICENSE-MIT`.
 ///
 /// The text intentionally does not include a copyright line; when we use this
 /// as a fallback for a crate whose source tree omits the LICENSE file, we
 /// have no way to know the crate's specific copyright holder — callers will
 /// mark the entry so users know the attribution is less precise than if the
 /// crate had shipped its own LICENSE.
-pub const MIT: &str = include_str!("../../../LICENSE-MIT");
+pub const MIT: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/LICENSE-MIT"));
 
-/// Canonical text of the Apache License, Version 2.0, reused from the
-/// repository root.
-pub const APACHE_2_0: &str = include_str!("../../../LICENSE-APACHE");
+/// Canonical text of the Apache License, Version 2.0, reused from this
+/// package's `LICENSE-APACHE`.
+pub const APACHE_2_0: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/LICENSE-APACHE"));
 
 /// Return the canonical SPDX license text for a single SPDX identifier, or
 /// `None` if we don't (yet) bundle one. The input must be a bare identifier

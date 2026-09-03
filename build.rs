@@ -19,37 +19,34 @@
 //!
 //! For the rationale behind implementing this pipeline ourselves rather than
 //! driving `cargo-about`, `cargo-bundle-licenses`, or similar from
-//! `build.rs`, see the module-level docs on
-//! [`gitoxide_core::licenses`](../gitoxide-core/src/licenses/mod.rs).
+//! `build.rs`, see the module-level docs of `src/licenses/mod.rs`.
 //! The short version: every user running `cargo install gitoxide` must get
 //! complete attribution without any auxiliary CLI tool installed.
 
-// These modules live in `gitoxide-core` so the runtime (consumed via
-// `gitoxide_core::licenses`) and `build.rs` (the producer) share one
-// source of truth. We include them here with `#[path]` rather than adding
-// `gitoxide-core` as a build-dependency because `gitoxide-core` pulls in
-// the full `gix` stack — compiling that an extra time just to run the
-// build script would be disproportionate.
+// These modules are shared with the runtime side in this package's library
+// (`crate::licenses`), so the producer and the consumer of the manifest have
+// one source of truth. A build script cannot depend on the library of the
+// package it builds, so they are compiled a second time here via `#[path]`.
 //
 // `render.rs` uses `super::types`, which resolves to this build script's
-// crate root (where `mod types;` is declared below), and at runtime
-// resolves to `gitoxide_core::licenses::types`. The files themselves are
-// compiled unchanged in either environment. Items the build script does
-// not use are allowed without warning — they belong to the runtime side.
+// crate root (where `mod types;` is declared below), and in the library
+// resolves to `crate::licenses::types`. The files themselves are compiled
+// unchanged in either environment. Items the build script does not use are
+// allowed without warning — they belong to the runtime side.
 #[allow(dead_code)]
-#[path = "gitoxide-core/src/licenses/types.rs"]
+#[path = "src/licenses/types.rs"]
 mod types;
 
 #[allow(dead_code)]
-#[path = "gitoxide-core/src/licenses/render.rs"]
+#[path = "src/licenses/render.rs"]
 mod render;
 
 #[allow(dead_code)]
-#[path = "gitoxide-core/src/licenses/spdx_texts.rs"]
+#[path = "src/licenses/spdx_texts.rs"]
 mod spdx_texts;
 
 #[allow(dead_code)]
-#[path = "gitoxide-core/src/licenses/build_support.rs"]
+#[path = "src/licenses/build_support.rs"]
 mod build_support;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -70,10 +67,10 @@ fn main() {
     // Every source file we include via `#[path]` needs an explicit rerun
     // trigger — Cargo only tracks files it discovered through the normal
     // module tree, and build.rs pulls these in out-of-band.
-    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/types.rs");
-    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/render.rs");
-    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/spdx_texts.rs");
-    println!("cargo:rerun-if-changed=gitoxide-core/src/licenses/build_support.rs");
+    println!("cargo:rerun-if-changed=src/licenses/types.rs");
+    println!("cargo:rerun-if-changed=src/licenses/render.rs");
+    println!("cargo:rerun-if-changed=src/licenses/spdx_texts.rs");
+    println!("cargo:rerun-if-changed=src/licenses/build_support.rs");
     // The MIT / Apache-2.0 fallback texts live in repo-root files that
     // `spdx_texts.rs` pulls in with `include_str!`. Changes to them must
     // re-emit the manifest too.

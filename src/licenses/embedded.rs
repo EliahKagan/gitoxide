@@ -11,13 +11,13 @@
 //!   binary growth on the order of a few hundred KB.
 //! * `third_party_licenses.txt`       — pre-rendered plain text, shipped as
 //!   `THIRD-PARTY-LICENSES.txt` in the release archive. The runtime does not
-//!   embed this; `gitoxide_core::licenses::render_all` can regenerate
+//!   embed this; `crate::licenses::render_all` can regenerate
 //!   byte-identical output from a loaded [`Manifest`] whenever
 //!   `gix licenses --all` or `ein licenses --all` is invoked.
 
 use std::io;
 
-use gitoxide_core::licenses::Manifest;
+use crate::licenses::Manifest;
 
 /// Zlib-compressed JSON manifest, embedded at compile time.
 pub const JSON_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/third_party_licenses.json.gz"));
@@ -122,7 +122,7 @@ mod tests {
     /// does not depend on the real embedded data.
     #[test]
     fn missing_license_text_diagnostic_names_crate_and_gives_guidance() {
-        use gitoxide_core::licenses::{CrateLicense, Manifest};
+        use crate::licenses::{CrateLicense, Manifest};
 
         let manifest = Manifest {
             crates: vec![CrateLicense {
@@ -159,7 +159,7 @@ mod tests {
     /// Check that every crate in `manifest` has at least one license file.
     /// Returns `Ok(())` if all do, or an `Err` with a diagnostic message
     /// listing the offending crates and remediation steps.
-    fn check_no_missing_license_text(manifest: &gitoxide_core::licenses::Manifest) -> Result<(), String> {
+    fn check_no_missing_license_text(manifest: &crate::licenses::Manifest) -> Result<(), String> {
         let missing: Vec<String> = manifest
             .crates
             .iter()
@@ -179,7 +179,7 @@ mod tests {
              1. Open an issue or PR on the upstream crate to ship a LICENSE file \
              (preferred — gets the actual copyright notice).\n  \
              2. Add the missing SPDX id's canonical text to \
-             `gitoxide-core/src/licenses/spdx_texts.rs` as a fallback \
+             `src/licenses/spdx_texts.rs` as a fallback \
              (acceptable for common licenses, but the text won't have the \
              crate's specific copyright line).\n  \
              3. If the crate genuinely has no applicable license text, investigate \
@@ -360,7 +360,7 @@ mod tests {
         // `gix licenses --all` output must equal the archive file verbatim.
         let manifest = load().expect("load manifest");
         let mut rendered = Vec::new();
-        gitoxide_core::licenses::render_all(&mut rendered, &manifest).expect("render_all");
+        crate::licenses::render_all(&mut rendered, &manifest).expect("render_all");
 
         let txt_from_out_dir = std::fs::read(concat!(env!("OUT_DIR"), "/third_party_licenses.txt"))
             .expect("archive .txt must exist in OUT_DIR");
@@ -406,7 +406,7 @@ mod tests {
             let Some(expr) = c.spdx.as_deref() else {
                 continue;
             };
-            let ids = gitoxide_core::licenses::build_support::parse_spdx_ids(expr);
+            let ids = crate::licenses::build_support::parse_spdx_ids(expr);
             let intersection: Vec<String> = ids.iter().filter(|id| allow.contains(*id)).cloned().collect();
             if intersection.is_empty() {
                 unsatisfied.push((c.name.clone(), c.version.clone(), ids));

@@ -1,6 +1,6 @@
 //! End-to-end checks of the `gix licenses` (and where applicable
 //! `ein licenses`) subcommand's output shape under different flag
-//! combinations. The unit tests in `gitoxide-core/src/licenses/render.rs`
+//! combinations. The unit tests in `src/licenses/render.rs`
 //! and `src/licenses/cli.rs` already cover the rendering and JSON-emission
 //! logic against hand-crafted manifests; this file exercises the same
 //! surface against the actually built binaries so the embedded manifest,
@@ -590,7 +590,7 @@ fn all_and_crate_name_conflict_at_parse_time() {
 
 // ---------------------------------------------------------------------------
 // Inline footnote marks at the binary level. Unit-level analogues live in
-// `gitoxide-core/src/licenses/render.rs::tests::summary_header_has_no_notes_column`
+// `src/licenses/render.rs::tests::summary_header_has_no_notes_column`
 // and `footnote_marks_are_inline_with_the_spdx_expression`. The integration
 // tests pin the same contracts against the real embedded manifest.
 

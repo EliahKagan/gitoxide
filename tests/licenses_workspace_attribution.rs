@@ -220,7 +220,7 @@ fn binary_manifest() -> (BTreeSet<String>, BTreeSet<String>) {
 }
 
 /// Whitespace-tokenised, sorted form of an SPDX license expression.
-/// Independent of `gitoxide_core::licenses::build_support::parse_spdx_ids`
+/// Independent of `gitoxide::licenses::build_support::parse_spdx_ids`
 /// — that function additionally strips `WITH` exceptions, parentheses,
 /// and the legacy `/` separator, and deduplicates. Our simpler version
 /// is enough to handle the only normalisation we see in practice

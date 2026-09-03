@@ -519,8 +519,8 @@ jobs:
 
   # Exercise the third-party license manifest across OSes and feature
   # profiles. The actual invariants are asserted by Rust tests in
-  # `src/licenses/` (unit) and `tests/licenses_{parity,variation}.rs`
-  # (integration) — this job just runs `cargo test` for each combination,
+  # `src/licenses/` (unit) and `tests/licenses_*.rs` (integration) —
+  # this job just runs `cargo test` for each combination,
   # so failures point at a real test by name rather than a CI heredoc.
   licenses:
     name: Licenses manifest tests
@@ -558,20 +558,8 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # Runs every licenses-related test across the two crates that own
-      # them:
-      #   * `gitoxide-core::licenses` (types, render, spdx_texts,
-      #     build_support) — pure data/helpers, always-serde via the
-      #     `serde` feature flag.
-      #   * `gitoxide::licenses` (embedded, cli) — the binary-specific
-      #     pieces plus the `tests/licenses_{parity,variation}.rs`
-      #     integration tests.
-      #
-      # Both scopes stay narrow (`-p`) so this job doesn't duplicate the
+      # The scope stays narrow (`-p`) so this job doesn't duplicate the
       # whole-workspace work already done by `test` / `test-fast`.
-      - name: Run gitoxide-core licenses tests
-        run: |
-          cargo test -p gitoxide-core --features serde -- licenses::
       - name: Run gitoxide licenses tests
         run: cargo test -p gitoxide --no-default-features --features "$FEATURE"
 

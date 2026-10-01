@@ -31,4 +31,4 @@ bitflags = "2"
 [dev-dependencies]
 insta = "1.46.3"
 gix-testtools = { path = "../tests/tools", features = ["sha1"] }
-serial_test = "3.4.0"
+serial_test = "4.0.1"

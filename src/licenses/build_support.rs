@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn collects_no_files_from_missing_directory() {
         let files = collect_crate_license_files(Path::new("/definitely/not/a/real/directory"));
-        assert!(files.is_empty());
+        assert_eq!(files, []);
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn spdx_fallback_returns_empty_for_unparsable_expression() {
         let files = spdx_fallback_files("", |_| Some("never"));
-        assert!(files.is_empty());
+        assert_eq!(files, []);
     }
 
     // ----- needs_separate_attribution -----

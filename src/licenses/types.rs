@@ -197,7 +197,7 @@ mod tests {
         let hits = manifest.find_all("sample");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].version, "1.2.3");
-        assert!(manifest.find_all("missing").is_empty());
+        assert_eq!(manifest.find_all("missing"), Vec::<&CrateLicense>::new());
     }
 
     /// When two entries in the manifest share a name (different versions,
@@ -241,7 +241,7 @@ mod tests {
           "target_triple": "x86_64-unknown-linux-gnu"
         }"#;
         let m: Manifest = serde_json::from_str(without_field).expect("deserialize without the field");
-        assert!(m.workspace_members_same_attribution.is_empty());
+        assert_eq!(m.workspace_members_same_attribution, Vec::<String>::new());
     }
 
     #[test]

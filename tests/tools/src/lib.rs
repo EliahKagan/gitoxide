@@ -177,12 +177,12 @@ impl FixtureState<'_> {
     }
 }
 
-/// Determines whether fixture generation should skip creating a cached fixture archive.
+/// Determines whether fixture generation should skip creating, updating, or overwriting a cached fixture archive.
 ///
 /// In this module, an archive is the tar file under [`ARCHIVE_DIR_NAME`] that stores the output of a fixture
 /// script or Rust fixture closure. The read-only fixture helpers unpack that archive when it already exists, and
 /// [`create_archive_if_we_should()`] consults this trait before writing a new archive from the generated fixture
-/// directory. An excluded archive that already exists, usually because it is tracked, is still overwritten.
+/// directory. An excluded archive that already exists is removed by [`remove_stale_archive()`] once it's stale.
 trait IsExcluded {
     /// Return true if `archive` matches the configured exclusion source.
     fn is_excluded(&self, archive: &Path) -> bool;
@@ -197,18 +197,27 @@ trait IsExcluded {
 fn is_excluded_by_lines(lines: &str, archive: &Path) -> bool {
     let archive = archive.to_string_lossy().replace('\\', "/");
     let filename = archive.rsplit('/').next().unwrap_or(&archive);
-    lines.lines().any(|line| {
+    // As in Git, the last matching pattern wins, and a leading `!` re-includes what it matches.
+    lines.lines().fold(false, |excluded, line| {
         let pattern = line.trim();
         if pattern.is_empty() || pattern.starts_with('#') {
-            return false;
+            return excluded;
         }
+        let (negated, pattern) = match pattern.strip_prefix('!') {
+            Some(pattern) => (true, pattern),
+            None => (false, pattern),
+        };
         let pattern = pattern.trim_start_matches('/');
         let candidate = if pattern.contains('/') {
             archive.as_str()
         } else {
             filename
         };
-        wildcard_match(pattern, candidate)
+        if wildcard_match(pattern, candidate) {
+            !negated
+        } else {
+            excluded
+        }
     })
 }
 
@@ -216,7 +225,7 @@ fn is_excluded_by_lines(lines: &str, archive: &Path) -> bool {
 ///
 /// The matcher understands literal characters and `*`, where `*` matches any byte sequence, including path
 /// separators. Patterns are anchored to the full `text`; other `.gitignore` features such as `?`, character
-/// classes, directory-only matches, and negation are not supported here.
+/// classes, and directory-only matches are not supported here. Negation is handled by [`is_excluded_by_lines()`].
 ///
 /// For example, `*.tar` matches `fixture.tar`, `generated-archives/*.tar` matches
 /// `generated-archives/fixture.tar`, and `generated-*/*.tar` matches `generated-archives/fixture.tar`.
@@ -780,9 +789,10 @@ pub fn fixture_bytes(path: impl AsRef<Path>) -> Vec<u8> {
 ///
 /// The latter is useful if the script's output is platform specific.
 ///
-/// This only applies to archives that don't exist yet: an excluded archive that is already present,
-/// usually because it is tracked, is still refreshed when its script changes so it doesn't go stale.
-/// To stop storing such an archive, remove it from the repository.
+/// An excluded archive is never written, even if it's already present because it is tracked. Once its script
+/// changes, it's removed instead of going stale, but only if Git can restore it, i.e. `HEAD` has the very same
+/// file. Only the script identity stored in the archive decides whether it's stale, so `GIX_TEST_IGNORE_ARCHIVES`
+/// doesn't affect this. To keep an archive up to date despite a broader exclusion, re-include it with a `!` line.
 ///
 /// ### Bash Symlink Preflight
 ///
@@ -2484,9 +2494,11 @@ fn create_archive_if_we_should(
     script_identity: u32,
     excludes: &dyn IsExcluded,
 ) -> std::io::Result<()> {
-    // Exclusions only prevent new archives, as existing ones would otherwise go stale.
-    if should_skip_all_archive_creation() || (excludes.is_excluded(archive) && !archive.is_file()) {
+    if should_skip_all_archive_creation() {
         return Ok(());
+    }
+    if excludes.is_excluded(archive) {
+        return remove_stale_archive(archive, script_identity);
     }
     if is_lfs_pointer_file(archive) {
         eprintln!(
@@ -2534,6 +2546,64 @@ fn create_archive_if_we_should(
     res
 }
 
+/// Remove the excluded `archive` if it was created by an earlier version of the script than the one with
+/// `script_identity`, so ignored archives aren't kept once they are stale. Only the identity stored in the
+/// archive is compared, never its contents, which naturally differ between hosts.
+///
+/// The archive is only removed if Git can restore it, i.e. `HEAD` has the very same file. Otherwise, it's kept.
+fn remove_stale_archive(archive: &Path, script_identity: u32) -> std::io::Result<()> {
+    if !archive.is_file() || is_lfs_pointer_file(archive) {
+        return Ok(());
+    }
+    match stored_identity(archive) {
+        Ok(identity) if identity != script_identity => {}
+        _ => return Ok(()),
+    }
+    if is_committed_in_head(archive) {
+        std::fs::remove_file(archive)?;
+        eprintln!(
+            "Removed ignored archive at \"{}\" as its generating script changed - it can be restored from `HEAD`",
+            archive.display()
+        );
+    } else {
+        eprintln!(
+            "Keeping ignored archive at \"{}\" although its generating script changed, as it can't be restored from `HEAD`",
+            archive.display()
+        );
+    }
+    Ok(())
+}
+
+/// Return `true` if `file` is identical to the blob at its path in `HEAD`, and that blob is available locally.
+fn is_committed_in_head(file: &Path) -> bool {
+    let (Some(dir), Some(name)) = (file.parent(), file.file_name()) else {
+        return false;
+    };
+    let git_stdout = |args: &[&OsStr]| -> Option<String> {
+        let out = git_command(dir)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|out| out.status.success())?;
+        Some(String::from_utf8(out.stdout).ok()?.trim().to_owned())
+    };
+    let mut head_path = OsString::from("HEAD:./");
+    head_path.push(name);
+    let rev_parse = [
+        OsStr::new("rev-parse"),
+        OsStr::new("--verify"),
+        OsStr::new("--quiet"),
+        &head_path,
+    ];
+    let Some(head_blob_id) = git_stdout(&rev_parse) else {
+        return false;
+    };
+    let file_blob_id = git_stdout(&[OsStr::new("hash-object"), OsStr::new("--"), name]);
+    // A partial clone may lack the blob. Older Git versions reject `--no-lazy-fetch`, which also keeps the file.
+    file_blob_id.as_ref() == Some(&head_blob_id)
+        && git_stdout(&["--no-lazy-fetch", "cat-file", "-e", &head_blob_id].map(OsStr::new)).is_some()
+}
+
 const META_DIR_NAME: &str = "__gitoxide_meta__";
 const META_IDENTITY: &str = "identity";
 const META_GIT_VERSION: &str = "git-version";
@@ -2561,50 +2631,15 @@ fn extract_archive(
     required_script_identity: u32,
     ignore_archive_override: bool,
 ) -> std::io::Result<(u32, Option<String>)> {
-    let archive_buf: Vec<u8> = {
-        let mut buf = Vec::new();
-        #[cfg_attr(feature = "xz", allow(unused_mut))]
-        let mut input_archive = std::fs::File::open(archive)?;
-        if !ignore_archive_override && env::var_os("GIX_TEST_IGNORE_ARCHIVES").is_some() {
-            return Err(std::io::Error::other(format!(
-                "Ignoring archive at \"{}\" as GIX_TEST_IGNORE_ARCHIVES is set.",
-                archive.display()
-            )));
-        }
-        #[cfg(feature = "xz")]
-        {
-            let mut decoder = xz2::bufread::XzDecoder::new(std::io::BufReader::new(input_archive));
-            std::io::copy(&mut decoder, &mut buf)?;
-        }
-        #[cfg(not(feature = "xz"))]
-        {
-            input_archive.read_to_end(&mut buf)?;
-        }
-        buf
-    };
-
-    let mut entry_buf = Vec::<u8>::new();
-    let (archive_identity, platform): (u32, _) = tar::Archive::new(std::io::Cursor::new(&mut &*archive_buf))
-        .entries_with_seek()?
-        .filter_map(std::result::Result::ok)
-        .find_map(|mut e: tar::Entry<'_, _>| {
-            let path = e.path().ok()?;
-            if path.parent()?.file_name()? == META_DIR_NAME && path.file_name()? == META_IDENTITY {
-                entry_buf.clear();
-                e.read_to_end(&mut entry_buf).ok()?;
-                let mut tokens = entry_buf.to_str().ok()?.trim().splitn(2, '-');
-                match (tokens.next(), tokens.next()) {
-                    (Some(id), platform) => Some((id.parse().ok()?, platform.map(ToOwned::to_owned))),
-                    _ => None,
-                }
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| std::io::Error::other("BUG: Could not find meta directory in our own archive"))
-        .map_err(|err| {
-            std::io::Error::other(format!("Could not extract archive at \"{}\": {err}", archive.display()))
-        })?;
+    let input_archive = std::fs::File::open(archive)?;
+    if !ignore_archive_override && env::var_os("GIX_TEST_IGNORE_ARCHIVES").is_some() {
+        return Err(std::io::Error::other(format!(
+            "Ignoring archive at \"{}\" as GIX_TEST_IGNORE_ARCHIVES is set.",
+            archive.display()
+        )));
+    }
+    let archive_buf = read_archive(input_archive)?;
+    let (archive_identity, platform) = identity_in_archive(archive, &archive_buf)?;
     if archive_identity != required_script_identity {
         eprintln!(
             "Ignoring archive at \"{}\" as its generating script changed",
@@ -2622,6 +2657,52 @@ fn extract_archive(
         entry.unpack_in(destination_dir)?;
     }
     Ok((archive_identity, platform))
+}
+
+/// Return the identity of the script that generated `archive`, without extracting it.
+fn stored_identity(archive: &Path) -> std::io::Result<u32> {
+    let archive_buf = read_archive(std::fs::File::open(archive)?)?;
+    Ok(identity_in_archive(archive, &archive_buf)?.0)
+}
+
+/// Read the uncompressed tar data of the opened `input_archive`.
+#[cfg_attr(feature = "xz", allow(unused_mut))]
+fn read_archive(mut input_archive: std::fs::File) -> std::io::Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    #[cfg(feature = "xz")]
+    {
+        let mut decoder = xz2::bufread::XzDecoder::new(std::io::BufReader::new(input_archive));
+        std::io::copy(&mut decoder, &mut buf)?;
+    }
+    #[cfg(not(feature = "xz"))]
+    {
+        input_archive.read_to_end(&mut buf)?;
+    }
+    Ok(buf)
+}
+
+/// Return the script identity and platform stored in `archive_buf`, the tar data of `archive`.
+fn identity_in_archive(archive: &Path, archive_buf: &[u8]) -> std::io::Result<(u32, Option<String>)> {
+    let mut entry_buf = Vec::<u8>::new();
+    tar::Archive::new(std::io::Cursor::new(archive_buf))
+        .entries_with_seek()?
+        .filter_map(std::result::Result::ok)
+        .find_map(|mut e: tar::Entry<'_, _>| {
+            let path = e.path().ok()?;
+            if path.parent()?.file_name()? == META_DIR_NAME && path.file_name()? == META_IDENTITY {
+                entry_buf.clear();
+                e.read_to_end(&mut entry_buf).ok()?;
+                let mut tokens = entry_buf.to_str().ok()?.trim().splitn(2, '-');
+                match (tokens.next(), tokens.next()) {
+                    (Some(id), platform) => Some((id.parse().ok()?, platform.map(ToOwned::to_owned))),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| std::io::Error::other("BUG: Could not find meta directory in our own archive"))
+        .map_err(|err| std::io::Error::other(format!("Could not extract archive at \"{}\": {err}", archive.display())))
 }
 
 fn family_name() -> &'static str {

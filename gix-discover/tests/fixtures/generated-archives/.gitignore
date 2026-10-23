@@ -18,3 +18,8 @@
 
 # Discovery does not need separately tracked archives for each object hash format.
 /*_sha256.tar
+
+# Store these despite the root `.gitignore`, as tests prefer or require them
+# (`*_needs_archive()` or `*_with_git_version()`).
+!/make_reftable_repo.tar
+!/make_worktree_relative_linking.tar

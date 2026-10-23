@@ -3,6 +3,46 @@
 title plumbing "${kind}"
 snapshot="$snapshot/plumbing"
 
+title 'stress harness'
+(with 'disposable fixtures in both object formats'
+  sandbox
+  harness="$root/../etc/scripts/stress.sh"
+  mkdir temporary
+  temporary="$PWD/temporary"
+  git init --bare --object-format=sha1 -q protected.git
+  # Two independent packs exercise fetched fixtures with multiple pack files.
+  for content in one two; do
+    blob_id=$(printf '%s\n' "$content" | git --git-dir=protected.git hash-object -w --stdin)
+    printf '%s\n' "$blob_id" | git --git-dir=protected.git pack-objects "$PWD/protected.git/objects/pack/pack" >/dev/null
+  done
+  cp -R protected.git expected.git
+  function run-stress() {
+    "$@" >stress.log 2>&1 || { cat stress.log; return 1; }
+  }
+
+  for mode in packs commitgraph; do
+    extra=()
+    if test "$mode" = packs; then extra+=("$PWD/protected.git"); fi
+    it "runs $mode with explicit hashes despite inherited Git overrides" && {
+      expect_run $SUCCESSFULLY run-stress env GIX_STRESS_COMMITS=128 TMPDIR="$temporary" \
+        GIT_DIR="$PWD/protected.git" GIT_WORK_TREE="$PWD/protected.git" \
+        GIT_COMMON_DIR="$PWD/protected.git" GIT_INDEX_FILE="$PWD/protected.git/index" \
+        GIT_OBJECT_DIRECTORY="$PWD/protected.git/objects" GIT_DEFAULT_HASH=sha256 \
+        bash "$harness" "$mode" "$exe_plumbing" ${extra[@]+"${extra[@]}"}
+      expect_run $SUCCESSFULLY grep -Fq 'stress (sha1):' stress.log
+      expect_run $SUCCESSFULLY grep -Fq 'stress (sha256):' stress.log
+      expect_run $SUCCESSFULLY diff -r expected.git protected.git
+      expect_equals "$(find "$temporary" -name 'gix-stress.*' | wc -l | tr -d ' ')" 0
+    }
+  done
+
+  it 'propagates a failed verification and cleans up its fixtures' && {
+    expect_run $WITH_FAILURE env GIX_STRESS_COMMITS=16 TMPDIR="$temporary" \
+      bash "$harness" commitgraph "$(type -P false)"
+    expect_equals "$(find "$temporary" -name 'gix-stress.*' | wc -l | tr -d ' ')" 0
+  }
+)
+
 if test "$kind" != "small"; then
 title "gix tracing"
 (with "buffered traces on stderr"

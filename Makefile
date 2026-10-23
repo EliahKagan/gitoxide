@@ -39,19 +39,20 @@ clear-cache: ## Remove persisted results of test-repositories, they regenerate a
 	-find . -path "*fixtures/generated" -type d -exec rm -Rf \{\} \;
 
 rust_repo = tests/fixtures/repos/rust.git
+stress_git = bash $(abspath etc/scripts/stress.sh) git
 $(rust_repo):
 	mkdir -p $@
-	cd $@ && git init --bare && git remote add origin https://github.com/rust-lang/rust && git fetch
+	cd $@ && $(stress_git) init --bare --object-format=sha1 && $(stress_git) remote add origin https://github.com/rust-lang/rust && $(stress_git) fetch
 
 linux_repo = tests/fixtures/repos/linux.git
 $(linux_repo):
 	mkdir -p $@
-	cd $@ && git init --bare && git remote add origin https://github.com/torvalds/linux && git fetch
+	cd $@ && $(stress_git) init --bare --object-format=sha1 && $(stress_git) remote add origin https://github.com/torvalds/linux && $(stress_git) fetch
 
 test_many_commits_1m_repo = tests/fixtures/repos/test-many-commits-1m.git
 $(test_many_commits_1m_repo):
 	mkdir -p $@
-	cd $@ && git init --bare && git remote add origin https://github.com/cirosantilli/test-many-commits-1m.git && git fetch
+	cd $@ && $(stress_git) init --bare --object-format=sha1 && $(stress_git) remote add origin https://github.com/cirosantilli/test-many-commits-1m.git && $(stress_git) fetch
 
 etc/gix-asciicast.svg:
 	svg-term --cast=542159 --out $@ --window
@@ -62,9 +63,9 @@ etc/gix-asciicast.svg:
 tests/fixtures/commit-graphs/linux/long-chain: $(linux_repo)
 	mkdir -p $@
 	rm -rf $(linux_repo)/objects/info/*graph*
-	set -x && cd $(linux_repo) && \
-		for tag in $$(git tag --list --merged v5.8 --sort=version:refname | grep -Fv -- -rc); do \
-			git show-ref -s "$$tag" | git commit-graph write --split=no-merge --stdin-commits; \
+	set -ex && cd $(linux_repo) && \
+		for tag in $$($(stress_git) tag --list --merged v5.8 --sort=version:refname | grep -Fv -- -rc); do \
+			$(stress_git) show-ref -s "$$tag" | $(stress_git) commit-graph write --split=no-merge --stdin-commits; \
 		done
 	mv -f $(linux_repo)/objects/info/*graphs* $@
 	actual=$$(ls -1 $@/commit-graphs/*.graph | wc -l); \
@@ -73,20 +74,20 @@ tests/fixtures/commit-graphs/linux/long-chain: $(linux_repo)
 tests/fixtures/commit-graphs/linux/single-file: $(linux_repo)
 	mkdir -p $@
 	rm -rf $(linux_repo)/objects/info/*graph*
-	cd $(linux_repo) && git show-ref -s v5.8 | git commit-graph write --stdin-commits
+	cd $(linux_repo) && $(stress_git) show-ref -s v5.8 | $(stress_git) commit-graph write --stdin-commits
 	mv -f $(linux_repo)/objects/info/*graph* $@
 
 tests/fixtures/commit-graphs/rust/single-file: $(rust_repo)
 	mkdir -p $@
 	rm -rf $(rust_repo)/objects/info/*graph*
-	cd $(rust_repo) && git fetch --tags && git show-ref -s 1.47.0 | git commit-graph write --stdin-commits
+	cd $(rust_repo) && $(stress_git) fetch --tags && $(stress_git) show-ref -s 1.47.0 | $(stress_git) commit-graph write --stdin-commits
 	mv -f $(rust_repo)/objects/info/*graph* $@
 
 tests/fixtures/commit-graphs/test-many-commits-1m/single-file: $(test_many_commits_1m_repo)
 	mkdir -p $@
 	rm -rf $(test_many_commits_1m_repo)/objects/info/*graph*
 	cd $(test_many_commits_1m_repo) \
-		&& echo f4d21576c13d917e1464d9bc1323a560a5b8595d | git commit-graph write --stdin-commits
+		&& echo f4d21576c13d917e1464d9bc1323a560a5b8595d | $(stress_git) commit-graph write --stdin-commits
 	mv -f $(test_many_commits_1m_repo)/objects/info/*graph* $@
 
 commit_graphs = \
@@ -97,30 +98,18 @@ commit_graphs = \
 
 ##@ on CI
 
-stress: ## Run various algorithms on big repositories
+.PHONY: stress
+stress: ## Run pack and commit-graph algorithms with SHA-1 and SHA-256 fixtures
 	$(MAKE) -j3 $(linux_repo) $(rust_repo) release-lean
-	time $(gix) --verbose no-repo pack verify --re-encode $(linux_repo)/objects/pack/*.idx
-	time $(gix) --verbose no-repo pack multi-index -i $(linux_repo)/objects/pack/multi-pack-index create $(linux_repo)/objects/pack/*.idx
-	time $(gix) --verbose no-repo pack verify $(linux_repo)/objects/pack/multi-pack-index
-	rm -Rf out; mkdir out && time $(gix) --verbose no-repo pack index create -p $(linux_repo)/objects/pack/*.pack out/
-	time $(gix) --verbose no-repo pack verify out/*.idx
-
-	time $(gix) --verbose no-repo pack verify --statistics $(rust_repo)/objects/pack/*.idx
-	time $(gix) --verbose no-repo pack verify --algorithm less-memory $(rust_repo)/objects/pack/*.idx
-	time $(gix) --verbose no-repo pack verify --re-encode $(rust_repo)/objects/pack/*.idx
-	# We must ensure there is exactly one pack file for the pack-explode *.idx globs to work.
-	git repack -Ad
-	time $(gix) --verbose no-repo pack explode .git/objects/pack/*.idx
-
-	rm -Rf delme; mkdir delme && time $(gix) --verbose no-repo pack explode .git/objects/pack/*.idx delme/
-
+	bash etc/scripts/stress.sh packs "$(gix)" $(linux_repo) $(rust_repo)
 	$(MAKE) stress-commitgraph
 	$(MAKE) bench-gix-config
 
 .PHONY: stress-commitgraph
 stress-commitgraph: release-lean $(commit_graphs)
+	bash etc/scripts/stress.sh commitgraph "$(gix)"
 	set -x; for path in $(wordlist 2, 999, $^); do \
-		time $(gix) --verbose no-repo commit-graph verify $$path; \
+		time $(gix) --verbose --object-hash sha1 no-repo commit-graph verify $$path || exit; \
 	done
 
 .PHONY: bench-gix-config

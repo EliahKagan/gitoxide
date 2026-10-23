@@ -10,6 +10,45 @@ Run `just` to browse commands grouped by purpose, with everyday development task
 first. Use `just --groups` to list the groups, or filter the overview with, for
 example, `just --list --group 'Dependencies and SBOMs'`.
 
+## Stress testing
+
+`make stress` builds the lean binary and exercises pack and commit-graph algorithms
+with both SHA-1 and SHA-256. Linux, Rust, and the million-commit repository remain
+cached SHA-1 fixtures fetched from their remotes. Their format is selected
+explicitly; `GIT_DEFAULT_HASH=sha256` cannot convert a SHA-1 remote's history.
+
+`etc/scripts/stress.sh` also generates the same 100,000-commit history independently
+in each format using Git fast-import marks. Two branches, periodic merges, rotating
+paths, similar blobs, and annotated tags provide about 300,000 objects per format
+and exercise commits, trees, tags, and delta reconstruction. Pack
+checks cover both traversal algorithms, statistics, re-encoding, index creation,
+multi-pack indexes, and explosion. Fast-import checkpoints create multiple packs
+with offset deltas; a separate pack uses reference deltas, whose base IDs have
+different lengths in the two formats. Commit-graph checks cover single files and
+split chains, with Git verification as a reference.
+
+All generated fixtures and outputs are temporary and removed on success or failure.
+The source checkout is never used as a test repository, so linked worktrees work
+too. Real pack files are read through temporary symlinks with copied indices;
+multi-index creation writes only into those temporary directories. Reindexing
+still needs temporary disk space comparable to the real input packs. Downloads,
+large real-repository checks, and `gix-config` benchmarks remain the largest costs.
+The generated histories add CPU work and temporary storage; explosion to a sink
+covers every generated object, while loose-object output is limited to a separate
+512-commit fixture per format to bound filesystem costs.
+
+For a quick offline run after building a binary with both hash features:
+
+```sh
+GIX_STRESS_COMMITS=128 bash etc/scripts/stress.sh packs target/release/gix
+GIX_STRESS_COMMITS=128 bash etc/scripts/stress.sh commitgraph target/release/gix
+```
+
+Omit the override for full generated stress coverage. `make stress-commitgraph`
+also checks the existing large real commit-graph fixtures. Generated SHA-256
+histories complement those fixtures; they do not reproduce every detail of the
+Linux/Rust histories, external submodule objects, or packs exceeding 4 GiB.
+
 ## Release source paths
 
 The GitHub release workflow builds `gix` and `ein` through

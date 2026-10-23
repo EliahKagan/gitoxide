@@ -197,18 +197,27 @@ trait IsExcluded {
 fn is_excluded_by_lines(lines: &str, archive: &Path) -> bool {
     let archive = archive.to_string_lossy().replace('\\', "/");
     let filename = archive.rsplit('/').next().unwrap_or(&archive);
-    lines.lines().any(|line| {
+    // As in Git, the last matching pattern wins, and a leading `!` re-includes what it matches.
+    lines.lines().fold(false, |excluded, line| {
         let pattern = line.trim();
         if pattern.is_empty() || pattern.starts_with('#') {
-            return false;
+            return excluded;
         }
+        let (negated, pattern) = match pattern.strip_prefix('!') {
+            Some(pattern) => (true, pattern),
+            None => (false, pattern),
+        };
         let pattern = pattern.trim_start_matches('/');
         let candidate = if pattern.contains('/') {
             archive.as_str()
         } else {
             filename
         };
-        wildcard_match(pattern, candidate)
+        if wildcard_match(pattern, candidate) {
+            !negated
+        } else {
+            excluded
+        }
     })
 }
 
@@ -216,7 +225,7 @@ fn is_excluded_by_lines(lines: &str, archive: &Path) -> bool {
 ///
 /// The matcher understands literal characters and `*`, where `*` matches any byte sequence, including path
 /// separators. Patterns are anchored to the full `text`; other `.gitignore` features such as `?`, character
-/// classes, directory-only matches, and negation are not supported here.
+/// classes, and directory-only matches are not supported here. Negation is handled by [`is_excluded_by_lines()`].
 ///
 /// For example, `*.tar` matches `fixture.tar`, `generated-archives/*.tar` matches
 /// `generated-archives/fixture.tar`, and `generated-*/*.tar` matches `generated-archives/fixture.tar`.

@@ -540,6 +540,21 @@ fn gitignore_fallback_ignores_blank_lines_and_comments() {
 
 #[test]
 #[cfg(not(feature = "worktree-exclusions"))]
+fn gitignore_fallback_lets_the_last_matching_pattern_win() {
+    let lines = "/*.tar\n!/kept.tar\n";
+
+    assert!(
+        is_excluded_by_lines(lines, Path::new("generated-archives/other.tar")),
+        "archives matched only by the broad pattern are excluded"
+    );
+    assert!(
+        !is_excluded_by_lines(lines, Path::new("generated-archives/kept.tar")),
+        "a later `!` pattern re-includes the archive"
+    );
+}
+
+#[test]
+#[cfg(not(feature = "worktree-exclusions"))]
 fn gitignore_fallback_normalizes_windows_path_separators() {
     let lines = "generated-archives/rust-*.tar\n";
 

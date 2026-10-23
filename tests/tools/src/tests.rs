@@ -589,6 +589,14 @@ impl IsExcluded for Included {
     }
 }
 
+struct Excluded;
+
+impl IsExcluded for Excluded {
+    fn is_excluded(&self, _archive: &Path) -> bool {
+        true
+    }
+}
+
 fn write_test_archive(source: &Path, archive: &Path, identity: u32) {
     let meta_dir = populate_meta_dir(source, identity).expect("archive metadata can be created");
     let mut archive_buf = Vec::new();
@@ -673,6 +681,55 @@ fn required_archives_are_extracted_even_when_archives_are_ignored() -> TestResul
     )?;
 
     assert_eq!(result.as_deref(), Some("from archive"));
+    Ok(())
+}
+
+/// Excluding archives must not freeze those that already exist, which are usually tracked, when their script changes.
+#[test]
+fn excluded_archives_are_refreshed_if_present_but_never_created() -> TestResult {
+    if should_skip_all_archive_creation() {
+        return Ok(());
+    }
+    let temp = tempfile::TempDir::new()?;
+    let source = temp.path().join("source");
+    std::fs::create_dir(&source)?;
+    std::fs::write(source.join("payload"), "from archive")?;
+    let stale_archive = temp.path().join(format!("stale.{}", tar_extension()));
+    write_test_archive(&source, &stale_archive, 41);
+    let missing_archive = temp.path().join(format!("missing.{}", tar_extension()));
+
+    for (archive, fixture) in [(&stale_archive, "stale-fixture"), (&missing_archive, "missing-fixture")] {
+        run_fixture_generator_with_marker_handling(
+            archive,
+            &temp.path().join(fixture),
+            42,
+            false,
+            ArchivePolicy::Normal,
+            &Excluded,
+            "from a test generator",
+            |state| {
+                std::fs::write(state.path().join("payload"), "from script")?;
+                Ok(())
+            },
+        )?;
+    }
+
+    let refreshed = temp.path().join("refreshed");
+    std::fs::create_dir(&refreshed)?;
+    let (identity, _) = extract_archive(&stale_archive, &refreshed, 42, true)?;
+    assert_eq!(
+        identity, 42,
+        "the stale archive was rewritten with the current identity"
+    );
+    assert_eq!(
+        std::fs::read_to_string(refreshed.join("payload"))?,
+        "from script",
+        "the refreshed archive holds the regenerated fixture"
+    );
+    assert!(
+        !missing_archive.exists(),
+        "exclusions still prevent creating new archives"
+    );
     Ok(())
 }
 

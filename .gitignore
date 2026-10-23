@@ -16,7 +16,7 @@ $/tests/fixtures/commit-graphs/
 # Windows in particularl benefits from this due to slow script execution, but let's deal with
 # it once it's needed.
 # Match the files rather than the directory, so a `generated-archives/.gitignore` can re-include
-# the archives to keep with `!` lines.
+# the archives to keep with `!` lines. Ignored archives are removed once their scripts change.
 **/generated-archives/*.tar*
 
 # Cargo lock files of fuzz targets - let's have the latest versions of everything under test

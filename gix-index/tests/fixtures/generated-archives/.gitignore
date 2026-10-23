@@ -6,3 +6,14 @@
 # through a committed tar — the fixture must be regenerated per host.
 file_metadata.tar
 file_metadata_sha256.tar
+
+# Store these despite the root `.gitignore`, as tests prefer or require them
+# (`*_needs_archive()` or `*_with_git_version()`).
+!/untracked_cache_empty.tar
+!/untracked_cache_empty_sha256.tar
+!/untracked_cache_nested.tar
+!/untracked_cache_nested_sha256.tar
+!/untracked_cache_populated.tar
+!/untracked_cache_populated_sha256.tar
+!/v2_more_files.tar
+!/v2_more_files_sha256.tar

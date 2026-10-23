@@ -22,3 +22,8 @@ status_unchanged_filter_sha256.tar
 # Uses `chmod 000` on a tracked file; the unreadable mode is not portable.
 unreadable_untracked.tar
 unreadable_untracked_sha256.tar
+
+# Store these despite the root `.gitignore`, as tests prefer or require them
+# (`*_needs_archive()` or `*_with_git_version()`).
+!/status_many.tar
+!/status_many_sha256.tar

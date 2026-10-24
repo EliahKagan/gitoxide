@@ -540,6 +540,21 @@ fn gitignore_fallback_ignores_blank_lines_and_comments() {
 
 #[test]
 #[cfg(not(feature = "worktree-exclusions"))]
+fn gitignore_fallback_lets_the_last_matching_pattern_win() {
+    let lines = "/*.tar\n!/kept.tar\n";
+
+    assert!(
+        is_excluded_by_lines(lines, Path::new("generated-archives/other.tar")),
+        "archives matched only by the broad pattern are excluded"
+    );
+    assert!(
+        !is_excluded_by_lines(lines, Path::new("generated-archives/kept.tar")),
+        "a later `!` pattern re-includes the archive"
+    );
+}
+
+#[test]
+#[cfg(not(feature = "worktree-exclusions"))]
 fn gitignore_fallback_normalizes_windows_path_separators() {
     let lines = "generated-archives/rust-*.tar\n";
 
@@ -684,52 +699,70 @@ fn required_archives_are_extracted_even_when_archives_are_ignored() -> TestResul
     Ok(())
 }
 
-/// Excluding archives must not freeze those that already exist, which are usually tracked, when their script changes.
+/// Ignored archives are removed once stale, but only if `HEAD` can restore them. As staleness is decided by the
+/// identity stored in the archive, `GIX_TEST_IGNORE_ARCHIVES` must not cause fresh archives to be removed.
 #[test]
-fn excluded_archives_are_refreshed_if_present_but_never_created() -> TestResult {
+#[serial_test::serial]
+fn ignored_archives_are_removed_only_if_stale_and_restorable_from_head() -> TestResult {
     if should_skip_all_archive_creation() {
         return Ok(());
     }
     let temp = tempfile::TempDir::new()?;
+    git(temp.path(), "init -q")?;
     let source = temp.path().join("source");
     std::fs::create_dir(&source)?;
-    std::fs::write(source.join("payload"), "from archive")?;
-    let stale_archive = temp.path().join(format!("stale.{}", tar_extension()));
-    write_test_archive(&source, &stale_archive, 41);
-    let missing_archive = temp.path().join(format!("missing.{}", tar_extension()));
+    let archives = temp.path().join("generated-archives");
+    std::fs::create_dir(&archives)?;
+    let archive = |name: &str| archives.join(format!("{name}.{}", tar_extension()));
+    let write_archive = |name: &str, identity: u32, payload: &str| -> std::io::Result<()> {
+        std::fs::write(source.join("payload"), payload)?;
+        write_test_archive(&source, &archive(name), identity);
+        Ok(())
+    };
+    write_archive("committed-stale", 41, "old")?;
+    write_archive("modified-stale", 41, "old")?;
+    write_archive("committed-fresh", 42, "current")?;
+    git(temp.path(), "add generated-archives")?;
+    git(temp.path(), "commit -q -m archives")?;
+    write_archive("modified-stale", 41, "edited")?;
+    write_archive("untracked-stale", 41, "old")?;
+    let kept = ["modified-stale", "committed-fresh", "untracked-stale"]
+        .into_iter()
+        .map(|name| Ok((name, std::fs::read(archive(name))?)))
+        .collect::<std::io::Result<Vec<_>>>()?;
 
-    for (archive, fixture) in [(&stale_archive, "stale-fixture"), (&missing_archive, "missing-fixture")] {
+    let _env = Env::new().set("GIX_TEST_IGNORE_ARCHIVES", "1");
+    for name in [
+        "committed-stale",
+        "modified-stale",
+        "committed-fresh",
+        "untracked-stale",
+        "missing",
+    ] {
         run_fixture_generator_with_marker_handling(
-            archive,
-            &temp.path().join(fixture),
+            &archive(name),
+            &temp.path().join("fixtures").join(name),
             42,
             false,
             ArchivePolicy::Normal,
             &Excluded,
             "from a test generator",
-            |state| {
-                std::fs::write(state.path().join("payload"), "from script")?;
-                Ok(())
-            },
+            |_| Ok(()),
         )?;
     }
 
-    let refreshed = temp.path().join("refreshed");
-    std::fs::create_dir(&refreshed)?;
-    let (identity, _) = extract_archive(&stale_archive, &refreshed, 42, true)?;
-    assert_eq!(
-        identity, 42,
-        "the stale archive was rewritten with the current identity"
-    );
-    assert_eq!(
-        std::fs::read_to_string(refreshed.join("payload"))?,
-        "from script",
-        "the refreshed archive holds the regenerated fixture"
-    );
     assert!(
-        !missing_archive.exists(),
-        "exclusions still prevent creating new archives"
+        !archive("committed-stale").exists(),
+        "a stale archive that `HEAD` can restore is removed"
     );
+    for (name, contents) in kept {
+        assert_eq!(
+            std::fs::read(archive(name))?,
+            contents,
+            "the {name} archive is kept as is, as it's fresh or `HEAD` can't restore it"
+        );
+    }
+    assert!(!archive("missing").exists(), "ignored archives are never created");
     Ok(())
 }
 

@@ -103,3 +103,13 @@
 # Generate these small status fixtures with host-local symlink preflight and index timestamps.
 /make_status_attribute_and_ignore_repos.tar
 /make_status_attribute_and_ignore_repos_sha256.tar
+
+# Store these despite the root `.gitignore`, as tests prefer or require them
+# (`*_needs_archive()` or `*_with_git_version()`).
+!/make_emoji_with_decomposed_unicode.tar
+!/make_emoji_with_decomposed_unicode_sha256.tar
+!/make_reftable_repo.tar
+!/make_reftable_repo_sha256.tar
+!/make_rev_spec_parse_repos.tar
+!/make_worktree_relative_linking.tar
+!/make_worktree_relative_linking_sha256.tar

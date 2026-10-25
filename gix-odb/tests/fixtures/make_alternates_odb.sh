@@ -17,5 +17,4 @@ git commit -q -am c2
   git commit -q -m alternate-c1
 )
 
-echo $PWD/object_source/.git/objects > .git/objects/info/alternates
-
+echo "$PWD/object_source/.git/objects" > .git/objects/info/alternates

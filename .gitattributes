@@ -28,7 +28,6 @@ justfile text eol=lf
 /gix-merge/tests/fixtures/tree-cartesian-baseline.sh -shellcheck
 /gix-negotiate/tests/fixtures/make_repos.sh -shellcheck
 /gix-object/tests/fixtures/make_trees.sh -shellcheck
-/gix-odb/tests/fixtures/make_alternates_odb.sh -shellcheck
 /gix-odb/tests/fixtures/make_replaced_history.sh -shellcheck
 /gix-pathspec/tests/fixtures/match_baseline_dirs.sh -shellcheck
 /gix-ref/tests/fixtures/make_repo_for_reflog.sh -shellcheck

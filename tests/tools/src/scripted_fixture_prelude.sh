@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Sourced into the Bash instance executing a fixture, not installed in its environment.
 __gix_testtools_fixture_root=$PWD
 

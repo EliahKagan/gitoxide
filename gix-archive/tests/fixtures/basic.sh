@@ -28,4 +28,4 @@ touch extra-exe && chmod +x extra-exe
 mkdir extra-dir-empty extra-dir
 ln -s ../extra-file extra-dir/symlink-to-extra
 
-git rev-parse @^{tree} > head.hex
+git rev-parse '@^{tree}' > head.hex

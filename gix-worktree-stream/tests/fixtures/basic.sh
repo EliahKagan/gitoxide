@@ -32,4 +32,4 @@ mkdir extra-dir-empty extra-dir
 ln -s ../extra-file extra-dir/symlink-to-extra
 dd if=/dev/zero of=extra-bigfile bs=1024 count=156
 
-git rev-parse @^{tree} > head.hex
+git rev-parse '@^{tree}' > head.hex

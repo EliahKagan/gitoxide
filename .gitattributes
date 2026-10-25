@@ -12,7 +12,6 @@ justfile text eol=lf
 /gix-packetline-blocking/src/**/* linguist-generated
 
 # Shell scripts that do not pass ShellCheck yet. `etc/scripts/shellcheck.sh` skips them.
-/gix-archive/tests/fixtures/basic.sh -shellcheck
 /gix-commitgraph/tests/fixtures/generation_number_overflow.sh -shellcheck
 /gix-commitgraph/tests/fixtures/single_commit_huge_dates.sh -shellcheck
 /gix-diff/tests/fixtures/make_blob_repo.sh -shellcheck
@@ -51,7 +50,6 @@ justfile text eol=lf
 /gix-traverse/tests/fixtures/make_repos.sh -shellcheck
 /gix-url/tests/fixtures/make_baseline.sh -shellcheck
 /gix-worktree-state/tests/fixtures/make_traverse_trees.sh -shellcheck
-/gix-worktree-stream/tests/fixtures/basic.sh -shellcheck
 /gix-worktree/tests/fixtures/make_attributes_baseline.sh -shellcheck
 /gix/tests/fixtures/make_basic_repo.sh -shellcheck
 /gix/tests/fixtures/make_diff_repo.sh -shellcheck

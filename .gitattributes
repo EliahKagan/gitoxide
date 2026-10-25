@@ -72,10 +72,6 @@ justfile text eol=lf
 /gix/tests/fixtures/make_shallow_repo.sh -shellcheck
 /gix/tests/fixtures/make_status_repos.sh -shellcheck
 /gix/tests/fixtures/make_worktree_repo.sh -shellcheck
-/tests/helpers.sh -shellcheck
-/tests/journey/ein.sh -shellcheck
-/tests/journey/gix.sh -shellcheck
 /tests/tools/src/scripted_fixture_prelude.sh -shellcheck
 /tests/tools/tests/fixtures/make_config_isolation.sh -shellcheck
 /tests/tools/tests/fixtures/make_repository_state.sh -shellcheck
-/tests/utilities.sh -shellcheck

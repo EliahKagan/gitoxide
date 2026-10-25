@@ -8,7 +8,7 @@ kind=${4:?Fourth argument must an indicator of the kind of binary under test}
 
 root="$(cd "${0%/*}" && pwd)"
 
-# if relative paths are given eval them from the parent of this script's location 
+# if relative paths are given eval them from the parent of this script's location
 if [[ $exe != /* ]]; then
   exe="${root}/../$exe"
 fi
@@ -23,7 +23,6 @@ if [[ ${5:-} != --isolated ]]; then
   exec "$jtt" run "$BASH" "$root/journey.sh" "$exe" "$exe_plumbing" "$jtt" "$kind" --isolated
 fi
 
-# shellcheck disable=1090
 source "$root/utilities.sh"
 source "$root/helpers.sh"
 snapshot="$root/snapshots"

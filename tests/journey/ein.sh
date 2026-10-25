@@ -1,4 +1,11 @@
 # Must be sourced into the main journey test
+# shellcheck shell=bash
+#
+# Variables such as `$exe_plumbing` are set by `tests/journey.sh` (SC2154).
+# Each test runs in a subshell, so its changes to variables such as `$snapshot`
+# stay local to it (SC2030, SC2031). Single-quoted arguments are often scripts
+# for other shells, or literal strings, which must not expand here (SC2016).
+# shellcheck disable=SC2016,SC2030,SC2031,SC2154
 
 
 function remove-thread-id {
@@ -181,12 +188,12 @@ title "Porcelain ${kind}"
           )
 
           (with "--execute with move into subdirectory of itself"
-            (cd example.com
+            (cd example.com || exit
               rm -Rf a-repo-with-extension origin-and-fork
               mv one-origin ../
-              cd ..
-              rmdir example.com && mv one-origin example.com
             )
+            rmdir example.com
+            mv one-origin example.com
             it "succeeds" && {
               WITH_SNAPSHOT="$snapshot/execute-success-new-root" \
               expect_run_sh "$SUCCESSFULLY" "$exe tool organize --execute 2>/dev/null"
@@ -236,13 +243,13 @@ title "Porcelain ${kind}"
         (sandbox
           it "succeeds" && {
             WITH_SNAPSHOT="$snapshot/success-with-multi-element-directory" \
-            expect_run "$SUCCESSFULLY" "$exe" init $DIR
+            expect_run "$SUCCESSFULLY" "$exe" init "$DIR"
           }
 
           (when "trying to initialize the same directory again"
             it "fails" && {
               WITH_SNAPSHOT="$snapshot/fail-with-multi-element-directory" \
-              expect_run "$WITH_FAILURE" "$exe" init $DIR
+              expect_run "$WITH_FAILURE" "$exe" init "$DIR"
             }
           )
         )

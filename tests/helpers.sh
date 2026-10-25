@@ -1,4 +1,5 @@
 # Must be sourced into the main journey test
+# shellcheck shell=bash
 
 function set-static-git-environment() {
   set -a
@@ -23,7 +24,7 @@ function repo-with-remotes() {
 
   mkdir -p "$1"
   (
-    cd "$1"
+    cd "$1" || exit
     shift
     git init
     while [[ $# != 0 ]]; do
@@ -60,14 +61,16 @@ function small-repo-in-sandbox() {
 }
 
 function launch-git-daemon() {
-    local i git_daemon_url_file
+    local git_daemon_url_file
 
     git_daemon_url_file="$(mktemp -t git-daemon-url.XXXXXX)"
+    # shellcheck disable=SC2154  # Set by `tests/journey.sh`.
     "$jtt" git-daemon "$git_daemon_url_file" &
     daemon_pid=$!
 
-    for i in $(seq 1 50); do
+    for _ in $(seq 1 50); do
       if test -s "$git_daemon_url_file"; then
+        # shellcheck disable=SC2034  # Used by the journey tests.
         git_daemon_url="$(cat "$git_daemon_url_file")"
         rm -f "$git_daemon_url_file"
         trap 'kill "$daemon_pid" 2>/dev/null || true; wait "$daemon_pid" 2>/dev/null || true' EXIT

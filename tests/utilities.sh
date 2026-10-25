@@ -1,4 +1,5 @@
 # Must be sourced into the main journey test
+# shellcheck shell=bash
 
 WHITE="$(tput setaf 9 2>/dev/null || echo -n '')"
 YELLOW="$(tput setaf 3 2>/dev/null || echo -n '')"
@@ -8,6 +9,7 @@ OFFSET=( )
 STEP="  "
 
 function on_ci () {
+  # shellcheck disable=SC2329  # These replace the functions defined below.
   [ -n "${CI-}" ] || {
     function expect_run () {
       echo 1>&2 "${WHITE} - skipped (runs only on CI)"
@@ -22,6 +24,7 @@ function on_ci () {
 }
 
 function not_on_ci () {
+  # shellcheck disable=SC2329  # These replace the functions defined below.
   [ -z "${CI-}" ] || {
     function expect_run () {
       echo 1>&2 "${WHITE} - skipped (runs only locally)"
@@ -46,14 +49,6 @@ function _context () {
   shift
   echo 1>&2 "${YELLOW}${OFFSET[*]:-}[$name] $*"
   OFFSET+=("$STEP")
-}
-
-function step () {
-  _note step "${WHITE}" "$*"
-}
-
-function stepn () {
-  step "$*"
 }
 
 function with () {

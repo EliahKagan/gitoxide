@@ -1,4 +1,11 @@
 # Must be sourced into the main journey test
+# shellcheck shell=bash
+#
+# Variables such as `$exe_plumbing` are set by `tests/journey.sh` (SC2154).
+# Each test runs in a subshell, so its changes to variables such as `$snapshot`
+# stay local to it (SC2030, SC2031). Single-quoted arguments are often scripts
+# for other shells, or literal strings, which must not expand here (SC2016).
+# shellcheck disable=SC2016,SC2030,SC2031,SC2154
 
 title plumbing "${kind}"
 snapshot="$snapshot/plumbing"
@@ -11,6 +18,7 @@ title "gix tracing"
 
   # Pipe stderr to exercise terminal detection, keeping command output separate.
   # pipefail preserves the command's failure status through the capture pipeline.
+  # shellcheck disable=SC2329  # Invoked by `expect_run`.
   function capture-trace() (
     set -o pipefail
     "$exe_plumbing" "$@" 2>&1 >trace-out | cat >trace-err
@@ -84,7 +92,7 @@ title "gix tracing"
       done
     done
   fi
-  
+
   it "keeps status worker spans under the command's root span" && {
     git init -q status-repo
     printf 'tracked\n' >status-repo/tracked
@@ -396,7 +404,7 @@ title "gix (with repository)"
       (sandbox
         git init --object-format=sha256 -q remote
         (
-          cd remote
+          cd remote || exit
           git checkout -q -b main
           echo first >file
           git add file
@@ -404,7 +412,7 @@ title "gix (with repository)"
         )
         git clone -q "$PWD/remote" clone
         (
-          cd remote
+          cd remote || exit
           echo second >file
           git commit -q -am "second"
         )
@@ -482,7 +490,7 @@ title "gix commit-graph"
         # Copy both graph layouts out of the repository so verification cannot infer its object format from it.
         git init --object-format="$object_format" -q repo
         (
-          cd repo
+          cd repo || exit
           git -c commit.gpgsign=false commit --allow-empty -q -m "first"
           git commit-graph write --reachable
           cp -R .git/objects/info ../graph-info
@@ -706,7 +714,7 @@ title "gix commit-graph"
           (sandbox
             git init --object-format=sha256 -q remote
             (
-              cd remote
+              cd remote || exit
               git checkout -q -b main
               echo first >file
               git add file
@@ -727,6 +735,7 @@ title "gix commit-graph"
               expect_run_sh "$SUCCESSFULLY" 'test "$(git -C clone rev-parse refs/remotes/origin/HEAD)" = "$(git -C remote rev-parse HEAD)"'
             }
             it "prints the initial bare mapping without persisting it" && {
+              # shellcheck disable=SC2329  # Invoked by `expect_run`.
               function clone-bare() {
                 "$exe_plumbing" --no-verbose clone --bare "$PWD/remote" bare >bare-output
               }
@@ -826,7 +835,7 @@ title "gix commit-graph"
               it "generates the index, overwriting existing files, and outputs information as JSON" && {
                 WITH_SNAPSHOT="$snapshot/output-dir-restore-as-json-success" \
                 SNAPSHOT_FILTER=remove-paths \
-                expect_run "$SUCCESSFULLY" "$exe_plumbing" --format json free pack index create -i restore $PWD < "$PACK_FILE"
+                expect_run "$SUCCESSFULLY" "$exe_plumbing" --format json free pack index create -i restore "$PWD" < "$PACK_FILE"
               }
             )
             fi
@@ -844,7 +853,7 @@ title "gix commit-graph"
             (with 'multiple pack indices'
               (sandbox
                 it "creates a multi-index successfully" && {
-                  expect_run "$SUCCESSFULLY" "$exe_plumbing" free pack multi-index -i multi-pack-index create $fixtures/packs/pack-*.idx
+                  expect_run "$SUCCESSFULLY" "$exe_plumbing" free pack multi-index -i multi-pack-index create "$fixtures"/packs/pack-*.idx
                 }
               )
             )
@@ -876,7 +885,7 @@ title "gix commit-graph"
               }
             )
             (with "a pack file that is invalid somewhere"
-              cp ${PACK_FILE}.idx ${PACK_FILE}.pack .
+              cp -- "$PACK_FILE.idx" "$PACK_FILE.pack" .
               PACK_FILE="${PACK_FILE##*/}"
               "$jtt" mess-in-the-middle "${PACK_FILE}".pack
 
@@ -991,8 +1000,8 @@ title "gix commit-graph"
         snapshot="$snapshot/multi-index"
         (sandbox
           MULTI_PACK_INDEX=multi-pack-index
-          cp $fixtures/packs/pack-* .
-          $exe_plumbing free pack multi-index -i $MULTI_PACK_INDEX create *.idx
+          cp -- "$fixtures"/packs/pack-* .
+          "$exe_plumbing" free pack multi-index -i "$MULTI_PACK_INDEX" create -- *.idx
 
           (when "using fast validation via 'pack multi-index verify'"
             it "verifies the pack index successfully and with desired output" && {
@@ -1045,7 +1054,7 @@ title "gix commit-graph"
       (sandbox
         (with "an INvalid pack INDEX file"
           MULTI_PACK_INDEX="$fixtures/packs/pack-11fdfa9e156ab73caae3b6da867192221f2089c2.idx"
-          cp $MULTI_PACK_INDEX index.idx
+          cp -- "$MULTI_PACK_INDEX" index.idx
           echo $'\0' >> index.idx
           it "fails to verify the pack index and with desired output" && {
             WITH_SNAPSHOT="$snapshot/index-failure" \

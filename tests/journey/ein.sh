@@ -47,7 +47,7 @@ title "Porcelain ${kind}"
 
             it "traces the path with its full commit ID" && {
               WITH_SNAPSHOT="$PWD/expected" \
-              expect_run $SUCCESSFULLY "$exe" -q tool query . trace-path file
+              expect_run "$SUCCESSFULLY" "$exe" -q tool query . trace-path file
             }
           )
         )
@@ -62,37 +62,37 @@ title "Porcelain ${kind}"
           (with "no arguments"
             it "succeeds and prints only a summary" && {
               WITH_SNAPSHOT="$snapshot/no-args-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool estimate-hours 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours 2>/dev/null"
             }
           )
           (with "the show-pii argument"
             it "succeeds and shows information identifying people before the summary" && {
               WITH_SNAPSHOT="$snapshot/show-pii-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool estimate-hours --show-pii 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --show-pii 2>/dev/null"
             }
           )
           (with "the omit-unify-identities argument"
             it "succeeds and doesn't show unified identities (in this case there is only one author anyway)" && {
               WITH_SNAPSHOT="$snapshot/no-unify-identities-success" \
-              expect_run_sh $SUCCESSFULLY "$exe t estimate-hours --omit-unify-identities 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe t estimate-hours --omit-unify-identities 2>/dev/null"
             }
           )
           (with "the --file-stats argument"
             it "succeeds and shows file statistics" && {
               WITH_SNAPSHOT="$snapshot/file-stats-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool estimate-hours --file-stats 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --file-stats 2>/dev/null"
             }
           )
           (with "the --line-stats argument"
             it "succeeds and shows line statistics" && {
               WITH_SNAPSHOT="$snapshot/line-stats-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool estimate-hours --line-stats 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --line-stats 2>/dev/null"
             }
           )
           (with "all --stats arguments and pii"
             it "succeeds and shows all statistics" && {
               WITH_SNAPSHOT="$snapshot/all-stats-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool estimate-hours -pfl 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours -pfl 2>/dev/null"
             }
           )
           (with "co-authored-by trailers and pii"
@@ -109,14 +109,14 @@ title "Porcelain ${kind}"
               git commit -m "$(printf 'second\n\nCo-authored-by: Co Author <co@example.com>')" &>/dev/null
               it "counts co-authors as additional authors" && {
                 WITH_SNAPSHOT="$snapshot/co-authored-by-success" \
-                expect_run_sh $SUCCESSFULLY "$exe tool estimate-hours --show-pii 2>/dev/null"
+                expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --show-pii 2>/dev/null"
               }
             )
           )
           (with "a branch name that doesn't exist"
             it "fails and shows a decent enough error message" && {
               WITH_SNAPSHOT="$snapshot/invalid-branch-name-failure" \
-              expect_run_sh $WITH_FAILURE "$exe -q t estimate-hours . foobar"
+              expect_run_sh "$WITH_FAILURE" "$exe -q t estimate-hours . foobar"
             }
           )
         )
@@ -137,7 +137,7 @@ title "Porcelain ${kind}"
           (with "no arguments"
             it "succeeds and prints a list of repository work directories" && {
               WITH_SNAPSHOT="$snapshot/no-args-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool find 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool find 2>/dev/null"
             }
           )
         )
@@ -147,36 +147,36 @@ title "Porcelain ${kind}"
           (with "no arguments"
             it "succeeds and informs about the operations that it WOULD do" && {
               WITH_SNAPSHOT="$snapshot/no-args-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool organize 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool organize 2>/dev/null"
             }
 
             it "does not change the directory structure at all" && {
               WITH_SNAPSHOT="$snapshot/initial-directory-structure" \
-              expect_run_sh $SUCCESSFULLY 'find . -maxdepth 2 | sort'
+              expect_run_sh "$SUCCESSFULLY" 'find . -maxdepth 2 | sort'
             }
           )
 
           (with "--execute"
             it "succeeds" && {
               WITH_SNAPSHOT="$snapshot/execute-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool organize --execute 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool organize --execute 2>/dev/null"
             }
 
             it "changes the directory structure" && {
               WITH_SNAPSHOT="$snapshot/directory-structure-after-organize" \
-              expect_run_sh $SUCCESSFULLY 'find . -maxdepth 2 | sort'
+              expect_run_sh "$SUCCESSFULLY" 'find . -maxdepth 2 | sort'
             }
           )
 
           (with "--execute again"
             it "succeeds" && {
               WITH_SNAPSHOT="$snapshot/execute-success" \
-              expect_run_sh $SUCCESSFULLY "$exe tool organize --execute 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool organize --execute 2>/dev/null"
             }
 
             it "does not alter the directory structure as these are already in place" && {
               WITH_SNAPSHOT="$snapshot/directory-structure-after-organize" \
-              expect_run_sh $SUCCESSFULLY 'find . -maxdepth 2 | sort'
+              expect_run_sh "$SUCCESSFULLY" 'find . -maxdepth 2 | sort'
             }
           )
 
@@ -189,12 +189,12 @@ title "Porcelain ${kind}"
             )
             it "succeeds" && {
               WITH_SNAPSHOT="$snapshot/execute-success-new-root" \
-              expect_run_sh $SUCCESSFULLY "$exe tool organize --execute 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" "$exe tool organize --execute 2>/dev/null"
             }
 
             it "does alter the directory structure as these are already in place" && {
               WITH_SNAPSHOT="$snapshot/directory-structure-after-organize-to-new-root" \
-              expect_run_sh $SUCCESSFULLY 'find . -maxdepth 2 -type d | sort'
+              expect_run_sh "$SUCCESSFULLY" 'find . -maxdepth 2 -type d | sort'
             }
           )
         )
@@ -202,7 +202,7 @@ title "Porcelain ${kind}"
         (with "running with no further arguments"
           it "succeeds and informs about possible operations" && {
             WITH_SNAPSHOT="$snapshot/no-args-failure" \
-            expect_run_sh $WITH_CLAP_FAILURE "$exe t"
+            expect_run_sh "$WITH_CLAP_FAILURE" "$exe t"
           }
         )
         fi
@@ -218,13 +218,13 @@ title "Porcelain ${kind}"
         (sandbox
           it "succeeds" && {
             WITH_SNAPSHOT="$snapshot/success" \
-            expect_run $SUCCESSFULLY "$exe" init
+            expect_run "$SUCCESSFULLY" "$exe" init
           }
 
           (when "trying to initialize the same directory again"
             it "fails" && {
               WITH_SNAPSHOT="$snapshot/fail" \
-              expect_run $WITH_FAILURE "$exe" init
+              expect_run "$WITH_FAILURE" "$exe" init
             }
           )
         )
@@ -236,13 +236,13 @@ title "Porcelain ${kind}"
         (sandbox
           it "succeeds" && {
             WITH_SNAPSHOT="$snapshot/success-with-multi-element-directory" \
-            expect_run $SUCCESSFULLY "$exe" init $DIR
+            expect_run "$SUCCESSFULLY" "$exe" init $DIR
           }
 
           (when "trying to initialize the same directory again"
             it "fails" && {
               WITH_SNAPSHOT="$snapshot/fail-with-multi-element-directory" \
-              expect_run $WITH_FAILURE "$exe" init $DIR
+              expect_run "$WITH_FAILURE" "$exe" init $DIR
             }
           )
         )

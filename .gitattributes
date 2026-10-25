@@ -37,7 +37,6 @@ justfile text eol=lf
 /gix-status/tests/fixtures/conflicts.sh -shellcheck
 /gix-status/tests/fixtures/status_many.sh -shellcheck
 /gix-tix/tests/fixtures/create_below.sh -shellcheck
-/gix-transport/tests/fixtures/make_transport_baseline.sh -shellcheck
 /gix-traverse/tests/fixtures/make_repo_for_topo.sh -shellcheck
 /gix-traverse/tests/fixtures/make_repos.sh -shellcheck
 /gix-url/tests/fixtures/make_baseline.sh -shellcheck

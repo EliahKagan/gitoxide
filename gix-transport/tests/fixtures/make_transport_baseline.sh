@@ -2,7 +2,7 @@
 set -eu -o pipefail
 
 # This fixture creates a single commit, so the `fetch` command called below
-# transfers exactly three objects: a commit, a tree, and a blob. 
+# transfers exactly three objects: a commit, a tree, and a blob.
 git init -q repo
 cd repo
 printf 'transport fixture\n' >file
@@ -43,7 +43,7 @@ request_header() {
   packet thin-pack
   packet ofs-delta
   packet "want $commit_id"
-  packet done
+  packet "done"
   printf '0000'
 } >.git/transport-baseline/fetch.request
 
@@ -52,7 +52,7 @@ request_header() {
 {
   packet "want $commit_id side-band-64k ofs-delta object-format=$hash"
   printf '0000'
-  packet done
+  packet "done"
 } >.git/transport-baseline/v1-fetch.request
 git upload-pack --stateless-rpc --advertise-refs . >.git/transport-baseline/v1.response
 git upload-pack --stateless-rpc . <.git/transport-baseline/v1-fetch.request >>.git/transport-baseline/v1.response

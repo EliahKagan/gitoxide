@@ -21,7 +21,7 @@ title "Porcelain ${kind}"
       it "fails as expected" && {
         WITH_SNAPSHOT="$snapshot/expected-failure" \
         SNAPSHOT_FILTER=remove-thread-id \
-        expect_run_sh 0 "$exe -q panic"
+        expect_run_sh 0 '"$1" -q panic' "$exe"
       }
     )
 
@@ -29,7 +29,7 @@ title "Porcelain ${kind}"
       it "fails as expected" && {
         WITH_SNAPSHOT="$snapshot/expected-failure-in-thread" \
         SNAPSHOT_FILTER=remove-thread-id \
-        expect_run_sh 0 "$exe panic"
+        expect_run_sh 0 '"$1" panic' "$exe"
       }
     )
   )
@@ -69,37 +69,37 @@ title "Porcelain ${kind}"
           (with "no arguments"
             it "succeeds and prints only a summary" && {
               WITH_SNAPSHOT="$snapshot/no-args-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool estimate-hours 2>/dev/null' "$exe"
             }
           )
           (with "the show-pii argument"
             it "succeeds and shows information identifying people before the summary" && {
               WITH_SNAPSHOT="$snapshot/show-pii-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --show-pii 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool estimate-hours --show-pii 2>/dev/null' "$exe"
             }
           )
           (with "the omit-unify-identities argument"
             it "succeeds and doesn't show unified identities (in this case there is only one author anyway)" && {
               WITH_SNAPSHOT="$snapshot/no-unify-identities-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe t estimate-hours --omit-unify-identities 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" t estimate-hours --omit-unify-identities 2>/dev/null' "$exe"
             }
           )
           (with "the --file-stats argument"
             it "succeeds and shows file statistics" && {
               WITH_SNAPSHOT="$snapshot/file-stats-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --file-stats 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool estimate-hours --file-stats 2>/dev/null' "$exe"
             }
           )
           (with "the --line-stats argument"
             it "succeeds and shows line statistics" && {
               WITH_SNAPSHOT="$snapshot/line-stats-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --line-stats 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool estimate-hours --line-stats 2>/dev/null' "$exe"
             }
           )
           (with "all --stats arguments and pii"
             it "succeeds and shows all statistics" && {
               WITH_SNAPSHOT="$snapshot/all-stats-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours -pfl 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool estimate-hours -pfl 2>/dev/null' "$exe"
             }
           )
           (with "co-authored-by trailers and pii"
@@ -116,14 +116,14 @@ title "Porcelain ${kind}"
               git commit -m "$(printf 'second\n\nCo-authored-by: Co Author <co@example.com>')" &>/dev/null
               it "counts co-authors as additional authors" && {
                 WITH_SNAPSHOT="$snapshot/co-authored-by-success" \
-                expect_run_sh "$SUCCESSFULLY" "$exe tool estimate-hours --show-pii 2>/dev/null"
+                expect_run_sh "$SUCCESSFULLY" '"$1" tool estimate-hours --show-pii 2>/dev/null' "$exe"
               }
             )
           )
           (with "a branch name that doesn't exist"
             it "fails and shows a decent enough error message" && {
               WITH_SNAPSHOT="$snapshot/invalid-branch-name-failure" \
-              expect_run_sh "$WITH_FAILURE" "$exe -q t estimate-hours . foobar"
+              expect_run_sh "$WITH_FAILURE" '"$1" -q t estimate-hours . foobar' "$exe"
             }
           )
         )
@@ -144,7 +144,7 @@ title "Porcelain ${kind}"
           (with "no arguments"
             it "succeeds and prints a list of repository work directories" && {
               WITH_SNAPSHOT="$snapshot/no-args-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool find 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool find 2>/dev/null' "$exe"
             }
           )
         )
@@ -154,7 +154,7 @@ title "Porcelain ${kind}"
           (with "no arguments"
             it "succeeds and informs about the operations that it WOULD do" && {
               WITH_SNAPSHOT="$snapshot/no-args-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool organize 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool organize 2>/dev/null' "$exe"
             }
 
             it "does not change the directory structure at all" && {
@@ -166,7 +166,7 @@ title "Porcelain ${kind}"
           (with "--execute"
             it "succeeds" && {
               WITH_SNAPSHOT="$snapshot/execute-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool organize --execute 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool organize --execute 2>/dev/null' "$exe"
             }
 
             it "changes the directory structure" && {
@@ -178,7 +178,7 @@ title "Porcelain ${kind}"
           (with "--execute again"
             it "succeeds" && {
               WITH_SNAPSHOT="$snapshot/execute-success" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool organize --execute 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool organize --execute 2>/dev/null' "$exe"
             }
 
             it "does not alter the directory structure as these are already in place" && {
@@ -196,7 +196,7 @@ title "Porcelain ${kind}"
             mv one-origin example.com
             it "succeeds" && {
               WITH_SNAPSHOT="$snapshot/execute-success-new-root" \
-              expect_run_sh "$SUCCESSFULLY" "$exe tool organize --execute 2>/dev/null"
+              expect_run_sh "$SUCCESSFULLY" '"$1" tool organize --execute 2>/dev/null' "$exe"
             }
 
             it "does alter the directory structure as these are already in place" && {
@@ -209,7 +209,7 @@ title "Porcelain ${kind}"
         (with "running with no further arguments"
           it "succeeds and informs about possible operations" && {
             WITH_SNAPSHOT="$snapshot/no-args-failure" \
-            expect_run_sh "$WITH_CLAP_FAILURE" "$exe t"
+            expect_run_sh "$WITH_CLAP_FAILURE" '"$1" t' "$exe"
           }
         )
         fi

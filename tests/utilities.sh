@@ -112,12 +112,14 @@ function expect_exists () {
   expect_run 0 test -e "${1:?}"
 }
 
+# Run the script `$2` with `bash`, passing any further arguments as `$1`, `$2`, etc.
 function expect_run_sh () {
-  expect_run "${1:?}" bash -c -eu -o pipefail "${2:?}"
+  expect_run "${1:?}" bash -c -eu -o pipefail "${2:?}" bash "${@:3}"
 }
 
+# Like `expect_run_sh`, but without `pipefail`.
 function expect_run_sh_no_pipefail () {
-  expect_run "${1:?}" bash -c -eu "${2:?}"
+  expect_run "${1:?}" bash -c -eu "${2:?}" bash "${@:3}"
 }
 
 function expect_snapshot () {

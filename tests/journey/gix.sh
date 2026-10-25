@@ -418,7 +418,7 @@ title "gix (with repository)"
         )
 
         it "fetches from origin" && {
-          expect_run_sh "$SUCCESSFULLY" "cd clone && \"$exe_plumbing\" --no-verbose fetch"
+          expect_run_sh "$SUCCESSFULLY" 'cd clone && "$1" --no-verbose fetch' "$exe_plumbing"
         }
         it "updates the remote-tracking branch" && {
           expect_run_sh "$SUCCESSFULLY" 'test "$(git -C clone rev-parse refs/remotes/origin/main)" = "$(git -C remote rev-parse refs/heads/main)"'
@@ -446,7 +446,7 @@ title "gix attributes"
       git add .gitattributes .gitignore file.txt file.bin nested
 
       it "agrees with Git for fixture attributes and ignore rules" && {
-        expect_run_sh_no_pipefail "$SUCCESSFULLY" "find . -path ./.git -prune -o -type f -print | sed 's|^./||' | $exe_plumbing --no-verbose attributes validate-baseline"
+        expect_run_sh_no_pipefail "$SUCCESSFULLY" 'find . -path ./.git -prune -o -type f -print | sed "s|^./||" | "$1" --no-verbose attributes validate-baseline' "$exe_plumbing"
       }
     )
   )

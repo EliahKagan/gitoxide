@@ -1,0 +1,6 @@
+# Follow `source`d files ShellCheck can find, even if they aren't being checked.
+external-sources=true
+# Resolve sourced paths relative to the sourcing script.
+source-path=SCRIPTDIR
+# Don't set `shell` here: it would override shebangs, checking `sh` scripts as
+# another shell. Use `# shellcheck shell=...` in shebangless files instead.

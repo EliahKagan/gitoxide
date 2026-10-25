@@ -29,6 +29,18 @@ bash etc/scripts/remap-release-paths.sh build cargo build --release --locked -p 
 bash etc/scripts/remap-release-paths.sh check target/release/gix target/release/ein
 ```
 
+## Shell scripts
+
+CI runs [ShellCheck](https://www.shellcheck.net) on every tracked shell script
+with `just shellcheck`, which runs `etc/scripts/shellcheck.sh`. It finds scripts
+by their `.sh` or `.bash` extension or a shell shebang, and lists which files it
+checked. Unsetting the `shellcheck` Git attribute (`-shellcheck`) skips a file,
+such as fixture data that only looks like a script.
+
+A script that is only sourced has no shebang, so name it `*.sh` and give it a
+`# shellcheck shell=bash` directive.
+Don't set `shell` in `.shellcheckrc` instead: it overrides every script's shebang.
+
 ## Practices
 
  * **fuzzing**

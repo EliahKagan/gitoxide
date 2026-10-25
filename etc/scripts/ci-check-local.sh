@@ -58,6 +58,7 @@ require_clean() {
 
 run_fast_checks() {
     run cargo fmt --all -- --check
+    run etc/scripts/shellcheck.sh
     run cargo machete
     run just clippy -D warnings -A unknown-lints --no-deps
     # cargo-deny 0.20 accepts workspace/features before the check subcommand.

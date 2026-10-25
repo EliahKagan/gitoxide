@@ -317,6 +317,11 @@ fmt:
     cargo +stable fmt --all -- --check
     {{ j }} --fmt --unstable
 
+# Run ShellCheck on all shell scripts
+[group('Development')]
+shellcheck:
+    etc/scripts/shellcheck.sh
+
 # Look for yanked crates (cancel after the initial warnings)
 [group('Dependencies and SBOMs')]
 find-yanked:

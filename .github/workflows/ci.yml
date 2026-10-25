@@ -521,6 +521,22 @@ jobs:
         # than allows is no problem either if it comes to that.
         continue-on-error: true
 
+  shellcheck:
+    runs-on: ubuntu-slim
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install ShellCheck
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: shellcheck@0.11.0
+      - name: Run ShellCheck on all shell scripts
+        env:
+          SHELLCHECK_OPTS: --color=always
+        run: etc/scripts/shellcheck.sh
+
   # This job is not required for PR auto-merge, so that sudden announcement of a
   # new advisory does not keep otherwise OK pull requests from being integrated.
   cargo-deny-advisories:
@@ -719,6 +735,7 @@ jobs:
       - test-32bit
       - test-32bit-windows-size-doc
       - lint
+      - shellcheck
       - cargo-deny
       - check-no-persist-credentials
       - check-blocking

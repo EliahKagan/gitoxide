@@ -30,7 +30,7 @@ EOF
   git add .gitignore && git commit -m "init"
 
   mkdir src
-  >src/file
+  : >src/file
 
   mkdir ignored-must-be-dir ignored
   touch ignored-must-be-dir/file ignored/file

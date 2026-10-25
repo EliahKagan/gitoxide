@@ -52,7 +52,7 @@ cp -R ignored-dir ignored-dir-with-nested-repository
     touch a
     git init nested
   )
-  >objs/a.o
+  : >objs/a.o
 )
 
 cp -R ignored-dir ignored-dir-with-nested-bare-repository
@@ -78,7 +78,7 @@ mkdir untracked-hidden-bare
 (cd untracked-hidden-bare
   mkdir subdir
   git init --bare subdir/hidden-bare
-  >subdir/file
+  : >subdir/file
 )
 
 git init tracked-is-ignored
@@ -166,6 +166,7 @@ git init partial-checkout-non-cone
 
 git init precious-nested-repository
 (cd precious-nested-repository
+  # shellcheck disable=SC2016  # A leading `$` marks a pattern as precious.
   echo '$precious*/' > .gitignore
   git init precious-repo
   git add .gitignore && git commit -m "init"
@@ -173,14 +174,14 @@ git init precious-nested-repository
 
 git init only-untracked
 (cd only-untracked
-  >a
-  >b
+  : >a
+  : >b
   mkdir d
-  >d/a
-  >d/b
+  : >d/a
+  : >d/b
   mkdir d/d
-  >d/d/a
-  >c
+  : >d/d/a
+  : >c
 )
 
 git init ignored-with-empty
@@ -207,13 +208,13 @@ cp -R only-untracked subdir-untracked
 
 cp -R subdir-untracked subdir-untracked-and-ignored
 (cd subdir-untracked-and-ignored
-  >a.o
-  >b.o
-  >d/a.o
-  >d/b.o
-  >d/d/a.o
-  >d/d/b.o
-  >c.o
+  : >a.o
+  : >b.o
+  : >d/a.o
+  : >d/b.o
+  : >d/d/a.o
+  : >d/d/b.o
+  : >c.o
   mkdir generated d/generated d/d/generated
   touch generated/a generated/a.o d/generated/b d/d/generated/b
   mkdir -p objs/sub
@@ -248,12 +249,14 @@ git init untracked-and-precious
 
 git init expendable-and-precious
 (cd expendable-and-precious
-  echo "*.o" >> .gitignore
-  echo '$precious' >> .gitignore
-  echo '$/mixed/precious' >> .gitignore
-  echo '$/all-precious/' >> .gitignore
-  echo "/all-expendable/" >> .gitignore
-  echo '$*.precious' >> .gitignore
+  cat >> .gitignore <<'EOF'
+*.o
+$precious
+$/mixed/precious
+$/all-precious/
+/all-expendable/
+$*.precious
+EOF
 
   git add .gitignore
 
@@ -289,14 +292,14 @@ git init expendable-and-precious-nested-in-ignored-dir
   mkdir -p ignored/other
   cp -R ../expendable-and-precious ignored/d
   rm -Rf ignored/d/*-by-filematch ignored/d/some-*
-  mkdir -p other/ignored && >other/ignored/a
+  mkdir -p other/ignored && : >other/ignored/a
 )
 
 
 mkdir empty-and-untracked-dir
 (cd empty-and-untracked-dir
   mkdir empty untracked
-  >untracked/file
+  : >untracked/file
 )
 
 
@@ -310,22 +313,22 @@ mkdir complex-empty
 
 git init type-mismatch
 (cd type-mismatch
-  mkdir dir-is-file && >dir-is-file/a
-  >file-is-dir
+  mkdir dir-is-file && : >dir-is-file/a
+  : >file-is-dir
   git add .
   rm -Rf dir-is-file
-  >dir-is-file
-  rm file-is-dir && mkdir file-is-dir && >file-is-dir/b
+  : >dir-is-file
+  rm file-is-dir && mkdir file-is-dir && : >file-is-dir/b
 )
 
 git init type-mismatch-icase
 (cd type-mismatch-icase
-  mkdir dir-is-file && >dir-is-file/a
-  >file-is-dir
+  mkdir dir-is-file && : >dir-is-file/a
+  : >file-is-dir
   git add .
   rm -Rf dir-is-file
-  >Dir-is-File
-  rm file-is-dir && mkdir File-is-Dir && >File-is-Dir/b
+  : >Dir-is-File
+  rm file-is-dir && mkdir File-is-Dir && : >File-is-Dir/b
 )
 
 git init type-mismatch-icase-clash-dir-is-file
@@ -335,13 +338,13 @@ git init type-mismatch-icase-clash-dir-is-file
 100644 $empty_oid	D/a
 100644 $empty_oid	d
 EOF
-  >d
+  : >d
 )
 
 cp -R type-mismatch-icase-clash-dir-is-file type-mismatch-icase-clash-file-is-dir
 (cd type-mismatch-icase-clash-file-is-dir
   rm d
-  mkdir D && >D/a
+  mkdir D && : >D/a
 )
 mkdir empty
 touch just-a-file

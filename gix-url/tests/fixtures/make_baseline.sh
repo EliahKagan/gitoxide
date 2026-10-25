@@ -40,6 +40,7 @@ for path in "repo" "re:po" "re/po"; do
     done
   done
   # file protocol urls
+  # shellcheck disable=SC2043  # A loop like the ones for the other protocols.
   for protocol in "file"; do
     tests_unix+=("$protocol://$host/$path")
 

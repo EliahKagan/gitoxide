@@ -32,7 +32,6 @@ justfile text eol=lf
 /gix-pathspec/tests/fixtures/match_baseline_dirs.sh -shellcheck
 /gix-ref/tests/fixtures/make_repo_for_reflog.sh -shellcheck
 /gix-ref/tests/fixtures/make_repository_with_lots_of_packed_refs.sh -shellcheck
-/gix-refspec/tests/fixtures/match_baseline.sh -shellcheck
 /gix-revision/tests/fixtures/make_merge_base_repos.sh -shellcheck
 /gix-revision/tests/fixtures/make_repo_with_branches.sh -shellcheck
 /gix-status/tests/fixtures/conflicts.sh -shellcheck

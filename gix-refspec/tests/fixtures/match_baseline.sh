@@ -38,7 +38,7 @@ mkdir base
 
 git clone --shared ./base clone
 (cd clone
-  git ls-remote 2>&1 > remote-refs.list
+  git ls-remote > remote-refs.list
   baseline "refs/heads/main"
   baseline "heads/main"
   baseline "main"

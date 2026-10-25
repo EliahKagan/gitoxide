@@ -2,10 +2,10 @@
 set -eu -o pipefail
 
 git init
->tracked
+: >tracked
 git add tracked && git commit -m "init"
 
->unreadable
+: >unreadable
 chmod 000 unreadable
 
 git status

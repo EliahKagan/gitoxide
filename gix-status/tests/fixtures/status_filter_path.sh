@@ -19,5 +19,6 @@ git commit -q -m "Commit"
 # The new `mtime` makes Git clean and hash the file again, from a subdirectory.
 touch -m -t 202001010000 a.txt
 mkdir subdir
+# shellcheck disable=SC2016  # Git runs the filter in a shell, which expands this.
 git -C subdir -c filter.path.clean='cat >/dev/null && printf %s %f && cat "$(dirname %f)/.clean-map"' \
   -c filter.path.required=true diff --exit-code

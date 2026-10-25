@@ -23,7 +23,7 @@ else
 fi
 
 # Check if the branch being rebased is behind the upstream branch
-if git log --oneline ${upstream_branch}..${branch_being_rebased} > /dev/null; then
+if git log --oneline "${upstream_branch}..${branch_being_rebased}" > /dev/null; then
   echo "Warning: The branch being rebased (${branch_being_rebased}) is behind the upstream branch (${upstream_branch})." 1>&2
   echo "Please update your branch before rebasing." 1>&2
   exit 1

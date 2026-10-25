@@ -26,7 +26,7 @@ remote="$1"
 url="$2"
 
 # Check each commit being pushed
-while read _local_ref local_hash _remote_ref _remote_hash; do
+while read -r _local_ref local_hash _remote_ref _remote_hash; do
   # Skip if the local hash is all zeroes (deletion)
   zero_sha=$(printf "%0${#local_hash}d" 0)
   if [ "$local_hash" = "$zero_sha" ]; then
@@ -36,7 +36,7 @@ while read _local_ref local_hash _remote_ref _remote_hash; do
   commit_msg=$(git log --format=%s -n 1 "$local_hash")
 
   # Check if the commit message contains "DELME"
-  if echo "$commit_msg" | grep -iq "DELME"; then
+  if printf '%s\n' "$commit_msg" | grep -iq "DELME"; then
     echo "Error: Found commit with 'DELME' in message. Push aborted to $remote ($url) aborted." 1>&2
     exit 1
   fi

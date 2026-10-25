@@ -15,18 +15,18 @@ max_repo_size_kb=$((5 * 1024 * 1024))
 while IFS= read -r line
 do
     # Parse the JSON and extract the repository name and size
-    repo=$(echo $line | jq -r '.nameWithOwner')
+    repo=$(printf '%s\n' "$line" | jq -r '.nameWithOwner')
     repo_dir=${prefix}/github.com/${repo}.git
-    repo_size_kb=$(echo $line | jq -r '.diskUsageKb')
+    repo_size_kb=$(printf '%s\n' "$line" | jq -r '.diskUsageKb')
 
-    if [ ! -z "$repo" -a "$repo" != " " ]; then
+    if [ -n "$repo" ] && [ "$repo" != " " ]; then
         if [ ! -d "$repo_dir" ]; then
             # Only clone if the repository size is less than the max size
-            if [ $repo_size_kb -lt $max_repo_size_kb ]; then
+            if [ "$repo_size_kb" -lt "$max_repo_size_kb" ]; then
                 echo "cloning $repo to $repo_dir"
-                git clone --bare https://github.com/$repo "$repo_dir"
-                git -C $repo_dir read-tree @
-                git -C $repo_dir commit-graph write --no-progress --reachable
+                git clone --bare -- "https://github.com/$repo" "$repo_dir"
+                git -C "$repo_dir" read-tree @
+                git -C "$repo_dir" commit-graph write --no-progress --reachable
             else
                 echo "Skipping repository $repo due to size larger than 5GB."
             fi

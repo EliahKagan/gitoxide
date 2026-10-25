@@ -9,6 +9,7 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC2016  # The backticks are literal.
 hash_feature_error='Please set either the `sha1` or the `sha256` feature flag'
 stderr_file="$(mktemp -t gix-hash-feature-check.XXXXXX)"
 trap 'rm -f "$stderr_file"' EXIT

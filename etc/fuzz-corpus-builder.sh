@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared helper for libFuzzer corpus builder scripts.
 #
 # Usage from a fuzz target-specific builder:

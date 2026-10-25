@@ -24,6 +24,7 @@ type dpkg-architecture  # Make sure we really have this.
 # image manually. In particular, if it is not passed, we would conclude that we
 # should install the versions of those packages with the host's architecture.
 apt_suffix=
+# shellcheck disable=SC2016  # The backticks are literal.
 if target_arch="$(dpkg-architecture --host-type "$target" --query DEB_HOST_ARCH)"
 then
     dpkg --add-architecture "$target_arch"
@@ -126,6 +127,7 @@ rm -rf /var/lib/apt/lists/*
 # run, but when we rely on their specific output to stderr, fixtures and tests
 # fail. The change we make here lets us set `NO_PRELOAD_CXX=1` to avoid that.
 runner=/android-runner
+# shellcheck disable=SC2016  # This is a `sed` script; `$` is for the shell it edits.
 patch='s/^[[:blank:]]*export LD_PRELOAD=/test "${NO_PRELOAD_CXX:-0}" != 0 || &/'
 if test -f "$runner"; then sed -i.orig "$patch" -- "$runner"; fi
 

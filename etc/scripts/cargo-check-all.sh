@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # Backticks in single-quoted patterns are literal.
 
 set -eux
 

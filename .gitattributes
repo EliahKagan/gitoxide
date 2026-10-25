@@ -12,11 +12,6 @@ justfile text eol=lf
 /gix-packetline-blocking/src/**/* linguist-generated
 
 # Shell scripts that do not pass ShellCheck yet. `etc/scripts/shellcheck.sh` skips them.
-/etc/corpus/clone-repos.sh -shellcheck
-/etc/docker/test-cross-context/customize.sh -shellcheck
-/etc/fuzz-corpus-builder.sh -shellcheck
-/etc/scripts/cargo-check-all.sh -shellcheck
-/etc/scripts/check-gix-crates-require-hash-features.sh -shellcheck
 /gix-archive/tests/fixtures/basic.sh -shellcheck
 /gix-commitgraph/tests/fixtures/generation_number_overflow.sh -shellcheck
 /gix-commitgraph/tests/fixtures/single_commit_huge_dates.sh -shellcheck

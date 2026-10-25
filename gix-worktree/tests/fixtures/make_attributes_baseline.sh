@@ -6,13 +6,13 @@ mkdir basics;
 function baseline() {
   {
     echo "$1"
-    GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile=$PWD/user.attributes check-attr -a "$1"
+    GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile="$PWD/user.attributes" check-attr -a "$1"
     echo
   } >> baseline
 
   {
     echo "$1"
-    GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile=$PWD/user.attributes check-attr info test -- "$1"
+    GIT_ATTR_NOSYSTEM=1 git -c core.attributesFile="$PWD/user.attributes" check-attr info test -- "$1"
     echo
   } >> baseline.selected
 }

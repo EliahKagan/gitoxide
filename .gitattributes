@@ -40,7 +40,6 @@ justfile text eol=lf
 /gix-traverse/tests/fixtures/make_repo_for_topo.sh -shellcheck
 /gix-traverse/tests/fixtures/make_repos.sh -shellcheck
 /gix-worktree-state/tests/fixtures/make_traverse_trees.sh -shellcheck
-/gix-worktree/tests/fixtures/make_attributes_baseline.sh -shellcheck
 /gix/tests/fixtures/make_basic_repo.sh -shellcheck
 /gix/tests/fixtures/make_diff_repo.sh -shellcheck
 /gix/tests/fixtures/make_fetch_repos.sh -shellcheck

@@ -18,7 +18,6 @@ justfile text eol=lf
 /gix-diff/tests/fixtures/make_diff_for_rewrites_repo.sh -shellcheck
 /gix-dir/tests/fixtures/many-symlinks.sh -shellcheck
 /gix-dir/tests/fixtures/many.sh -shellcheck
-/gix-discover/tests/fixtures/make_basic_repo.sh -shellcheck
 /gix-imara-diff/tests/fixtures/make_git_diffs.sh -shellcheck
 /gix-index/tests/fixtures/make_index/v2.sh -shellcheck
 /gix-index/tests/fixtures/make_index/v2_all_file_kinds.sh -shellcheck

@@ -4,6 +4,7 @@ set -eu -o pipefail
 # core.worktree is literal even when its value resembles a path interpolation.
 # Keep Git's baseline relative to each repository so the fixture can be relocated.
 i=0
+# shellcheck disable=SC2088  # These paths are meant literally.
 for path in '~' '~someone' '~/nested' '~someone/nested' '%(prefix)/nested'; do
   i=$((i + 1))
   repo="repo-$i"

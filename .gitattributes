@@ -42,13 +42,9 @@ justfile text eol=lf
 /gix-worktree-state/tests/fixtures/make_traverse_trees.sh -shellcheck
 /gix/tests/fixtures/make_basic_repo.sh -shellcheck
 /gix/tests/fixtures/make_diff_repo.sh -shellcheck
-/gix/tests/fixtures/make_fetch_repos.sh -shellcheck
-/gix/tests/fixtures/make_literal_worktree_paths.sh -shellcheck
 /gix/tests/fixtures/make_pre_epoch_repo.sh -shellcheck
-/gix/tests/fixtures/make_remote_repos.sh -shellcheck
 /gix/tests/fixtures/make_rev_parse_repo.sh -shellcheck
 /gix/tests/fixtures/make_rev_spec_parse_repos.sh -shellcheck
 /gix/tests/fixtures/make_revert_sequence_repo.sh -shellcheck
 /gix/tests/fixtures/make_shallow_repo.sh -shellcheck
 /gix/tests/fixtures/make_status_repos.sh -shellcheck
-/gix/tests/fixtures/make_worktree_repo.sh -shellcheck

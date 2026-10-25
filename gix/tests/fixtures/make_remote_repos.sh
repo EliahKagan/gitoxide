@@ -6,21 +6,19 @@ function tick () {
   then
     tick=1112911993
   else
-    tick=$(($tick + 60))
+    tick=$((tick + 60))
   fi
   GIT_COMMITTER_DATE="$tick -0700"
   GIT_AUTHOR_DATE="$tick -0700"
   export GIT_COMMITTER_DATE GIT_AUTHOR_DATE
 }
 
-GIT_AUTHOR_EMAIL=author@example.com
-GIT_AUTHOR_NAME='A U Thor'
-GIT_AUTHOR_DATE='1112354055 +0200'
-TEST_COMMITTER_LOCALNAME=committer
-TEST_COMMITTER_DOMAIN=example.com
-GIT_COMMITTER_EMAIL=committer@example.com
-GIT_COMMITTER_NAME='C O Mitter'
-GIT_COMMITTER_DATE='1112354055 +0200'
+export GIT_AUTHOR_EMAIL=author@example.com
+export GIT_AUTHOR_NAME='A U Thor'
+export GIT_AUTHOR_DATE='1112354055 +0200'
+export GIT_COMMITTER_EMAIL=committer@example.com
+export GIT_COMMITTER_NAME='C O Mitter'
+export GIT_COMMITTER_DATE='1112354055 +0200'
 
 # runup to the correct count for ambiguous commits
 tick; tick; tick; tick; tick
@@ -415,14 +413,14 @@ function optimize_repo() {
 
   git init -q client && cd client
     for i in $(seq 8); do
-      git checkout --orphan b$i &&
-      commit b$i.c0
+      git checkout --orphan "b$i" &&
+      commit "b$i.c0"
     done
 
     for j in $(seq 19); do
       for i in $(seq 8); do
-        git checkout b$i &&
-        commit b$i.c$j
+        git checkout "b$i" &&
+        commit "b$i.c$j"
       done
     done
     optimize_repo

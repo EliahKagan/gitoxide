@@ -177,12 +177,12 @@ impl FixtureState<'_> {
     }
 }
 
-/// Determines whether fixture generation should skip creating, updating, or overwriting a cached fixture archive.
+/// Determines whether fixture generation should skip creating a cached fixture archive.
 ///
 /// In this module, an archive is the tar file under [`ARCHIVE_DIR_NAME`] that stores the output of a fixture
 /// script or Rust fixture closure. The read-only fixture helpers unpack that archive when it already exists, and
 /// [`create_archive_if_we_should()`] consults this trait before writing a new archive from the generated fixture
-/// directory.
+/// directory. An excluded archive that already exists, usually because it is tracked, is still overwritten.
 trait IsExcluded {
     /// Return true if `archive` matches the configured exclusion source.
     fn is_excluded(&self, archive: &Path) -> bool;
@@ -779,6 +779,10 @@ pub fn fixture_bytes(path: impl AsRef<Path>) -> Vec<u8> {
 /// or more specific `.gitignore` configurations in lower levels of the work tree.
 ///
 /// The latter is useful if the script's output is platform specific.
+///
+/// This only applies to archives that don't exist yet: an excluded archive that is already present,
+/// usually because it is tracked, is still refreshed when its script changes so it doesn't go stale.
+/// To stop storing such an archive, remove it from the repository.
 ///
 /// ### Bash Symlink Preflight
 ///
@@ -2480,7 +2484,8 @@ fn create_archive_if_we_should(
     script_identity: u32,
     excludes: &dyn IsExcluded,
 ) -> std::io::Result<()> {
-    if should_skip_all_archive_creation() || excludes.is_excluded(archive) {
+    // Exclusions only prevent new archives, as existing ones would otherwise go stale.
+    if should_skip_all_archive_creation() || (excludes.is_excluded(archive) && !archive.is_file()) {
         return Ok(());
     }
     if is_lfs_pointer_file(archive) {

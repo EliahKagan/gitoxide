@@ -64,7 +64,7 @@ dependencies:
         repo_id: 259445878
     'google/oss-fuzz@master':
         ref: 'master'
-        commit: 'sha1-e028940e9a751de9c81ea3d2f46f5d6876e67b7c'
+        commit: 'sha1-24ff08d68e5047048b66dd9661f955d4379ec905'
         owner_id: 1342004
         repo_id: 63809205
     'msys2/setup-msys2@v2.32.0':
